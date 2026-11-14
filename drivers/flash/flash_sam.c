@@ -21,6 +21,9 @@
 #include <zephyr/sys/barrier.h>
 #include <string.h>
 #include <soc.h>
+#ifdef CONFIG_FLASH_EX_OP_ENABLED
+#include <zephyr/drivers/flash/atmel_sam_flash_api_ex.h>
+#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(flash_sam, CONFIG_FLASH_LOG_LEVEL);
@@ -45,6 +48,9 @@ typedef Efc sam_flash_regs_t;
 #define SAM_FLASH_FSR_FLOCKE EEFC_FSR_FLOCKE
 #define SAM_FLASH_FSR_FLERR  EEFC_FSR_FLERR
 #endif
+
+/* GPNVM bit 0 is the security bit. */
+#define SAM_FLASH_GPNVM_SECURITY_BIT 0U
 
 typedef void (*sam_flash_irq_init_fn_ptr)(void);
 
@@ -464,6 +470,59 @@ static int sam_flash_erase(const struct device *dev, off_t offset, size_t size)
 	return 0;
 }
 
+#ifdef CONFIG_FLASH_EX_OP_ENABLED
+static int sam_flash_gpnvm_command(const struct device *dev, uint32_t command, uint32_t bit)
+{
+	const struct sam_flash_config *config = dev->config;
+	sam_flash_regs_t *regs = config->regs;
+
+	regs->EEFC_FCR = command | EEFC_FCR_FARG(bit) | EEFC_FCR_FKEY_PASSWD;
+
+	return sam_flash_section_wait_until_ready(dev);
+}
+
+static int sam_flash_ex_op(const struct device *dev, uint16_t code, const uintptr_t in, void *out)
+{
+	struct sam_flash_data *sam_data = dev->data;
+	const struct sam_flash_config *config = dev->config;
+	k_spinlock_key_t key;
+	int ret;
+
+	key = k_spin_lock(&sam_data->lock);
+
+	switch (code) {
+	case FLASH_SAM_EX_OP_GPNVM_GET:
+		if (out == NULL) {
+			ret = -EINVAL;
+			break;
+		}
+		ret = sam_flash_gpnvm_command(dev, EEFC_FCR_FCMD_GGPB, 0U);
+		if (ret == 0) {
+			*(uint32_t *)out = config->regs->EEFC_FRR;
+		}
+		break;
+	case FLASH_SAM_EX_OP_GPNVM_SET:
+		/* The security bit can only be cleared by a full chip erase. */
+		if (in == SAM_FLASH_GPNVM_SECURITY_BIT) {
+			ret = -EPERM;
+			break;
+		}
+		ret = sam_flash_gpnvm_command(dev, EEFC_FCR_FCMD_SGPB, (uint32_t)in);
+		break;
+	case FLASH_SAM_EX_OP_GPNVM_CLEAR:
+		ret = sam_flash_gpnvm_command(dev, EEFC_FCR_FCMD_CGPB, (uint32_t)in);
+		break;
+	default:
+		ret = -ENOTSUP;
+		break;
+	}
+
+	k_spin_unlock(&sam_data->lock, key);
+
+	return ret;
+}
+#endif /* CONFIG_FLASH_EX_OP_ENABLED */
+
 static const struct flash_parameters *sam_flash_get_parameters(const struct device *dev)
 {
 	const struct sam_flash_config *config = dev->config;
@@ -487,6 +546,9 @@ static DEVICE_API(flash, sam_flash_api) = {
 	.erase = sam_flash_erase,
 	.get_parameters = sam_flash_get_parameters,
 	.page_layout = sam_flash_api_pages_layout,
+#ifdef CONFIG_FLASH_EX_OP_ENABLED
+	.ex_op = sam_flash_ex_op,
+#endif
 };
 
 static int sam_flash_init(const struct device *dev)
