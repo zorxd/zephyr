@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+title: Microchip TWIHS I2C controller (group g1)
+
+description: |
+  Microchip Two-wire Interface High Speed (TWIHS) in I2C controller mode,
+  with standard (100 kHz) and fast (400 kHz) speeds.
+
+  Group g1 TWIHS I2C driver supports following hardware peripherals:
+    - module name="TWIHS" id="11210" version="Z"
+
+compatible: "microchip,twihs-g1-i2c"
+
+include:
+  - name: i2c-controller.yaml
+  - name: pinctrl-device.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true

@@ -15,6 +15,15 @@ config I2C_MCHP_SERCOM_G1
 	help
 	  Enable support for Microchip SERCOM I2C g1 driver.
 
+config I2C_MCHP_TWIHS_G1
+	bool "Microchip TWIHS I2C g1 driver"
+	default y
+	depends on DT_HAS_MICROCHIP_TWIHS_G1_I2C_ENABLED
+	depends on CLOCK_CONTROL
+	select PINCTRL
+	help
+	  Enable support for Microchip TWIHS I2C g1 driver.
+
 if I2C_MCHP_SERCOM
 
 config I2C_MCHP_DMA_DRIVEN
