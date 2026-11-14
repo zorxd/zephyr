@@ -18,6 +18,7 @@
  *
  * Supported families:
  * - PIC32CK SG/GC series
+ * - PIC32CX SG series
  */
 
 #include <zephyr/drivers/can.h>

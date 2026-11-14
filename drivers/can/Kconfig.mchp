@@ -12,3 +12,4 @@ config CAN_MCHP_MCAN_G1
 	  Enable CAN support for Microchip MCUs using the Bosch M_CAN IP core.
 	  This driver supports:
 	    - PIC32CK SG/GC series
+	    - PIC32CX SG series

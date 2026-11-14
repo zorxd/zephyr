@@ -10,6 +10,7 @@ description: |
 
   Supported families:
     - PIC32CK SG/GC series
+    - PIC32CX SG series
 
 compatible: "microchip,mcan-g1"
 
