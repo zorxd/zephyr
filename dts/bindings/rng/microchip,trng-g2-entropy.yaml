@@ -10,6 +10,7 @@ description: |
 
   Group g2 TRNG driver supports following hardware peripherals:
     - module name="TRNG" id="6334" version="305"
+    - module name="TRNG" id="6334" version="G"
 
 examples:
   - |
