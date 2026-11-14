@@ -20,6 +20,7 @@
 		zephyr,entropy = &trng;
 		zephyr,console = &uart1;
 		zephyr,shell-uart = &uart1;
+		zephyr,canbus = &can0;
 	};
 
 	aliases {
@@ -142,4 +143,25 @@
 
 &trng {
 	status = "okay";
+};
+
+/* The ATA6561 standby inputs are tied low: the transceivers are always active. */
+&can0 {
+	pinctrl-0 = <&can0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
+	};
+};
+
+&can1 {
+	pinctrl-0 = <&can1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
+	};
 };
