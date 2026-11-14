@@ -57,6 +57,13 @@ BUILD_ASSERT(HCLK_HZ == DT_PROP(DT_PATH(cpus, cpu_0), clock_frequency),
 
 #define MOSCXT_STARTUP 0xFFU
 #define PLLA_COUNT     0x3FU
+#define UPLL_COUNT     0x3FU
+
+/* The UTMI PLL (UPLLCK, 480 MHz) clocks MCAN through PCK5. */
+#define UPLL_NEEDED DT_HAS_COMPAT_STATUS_OKAY(atmel_sam_can)
+
+BUILD_ASSERT(!UPLL_NEEDED || MAIN_XTAL_HZ == MHZ(12) || MAIN_XTAL_HZ == MHZ(16),
+	     "The UTMI PLL needs a 12 MHz or 16 MHz main crystal");
 
 static ALWAYS_INLINE void mck_wait_ready(pmc_registers_t *pmc)
 {
@@ -102,6 +109,15 @@ static ALWAYS_INLINE void clock_init(void)
 	pmc->CKGR_PLLAR = CKGR_PLLAR_ONE_Msk | CKGR_PLLAR_MULA(PLLA_MUL - 1U) |
 			  CKGR_PLLAR_PLLACOUNT(PLLA_COUNT) | CKGR_PLLAR_DIVA(PLLA_DIV);
 	while ((pmc->PMC_SR & PMC_SR_LOCKA_Msk) == 0U) {
+	}
+
+	if (UPLL_NEEDED) {
+		UTMI_REGS->UTMI_CKTRIM = (UTMI_REGS->UTMI_CKTRIM & ~UTMI_CKTRIM_FREQ_Msk) |
+					 ((MAIN_XTAL_HZ == MHZ(16)) ? UTMI_CKTRIM_FREQ_XTAL16
+								    : UTMI_CKTRIM_FREQ_XTAL12);
+		pmc->CKGR_UCKR = CKGR_UCKR_UPLLCOUNT(UPLL_COUNT) | CKGR_UCKR_UPLLEN_Msk;
+		while ((pmc->PMC_SR & PMC_SR_LOCKU_Msk) == 0U) {
+		}
 	}
 
 	/* Prescaler and divider first, PLLA as source last (data sheet PMC switching). */
