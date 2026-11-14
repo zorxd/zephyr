@@ -42,4 +42,20 @@
 				 <PD9A_GMAC_GMDIO>;
 		};
 	};
+
+	/* MCAN0 to the ATA6561 transceiver U700 */
+	can0_default: can0_default {
+		group1 {
+			pinmux = <PB2A_MCAN0_CANTX0>,
+				 <PB3A_MCAN0_CANRX0>;
+		};
+	};
+
+	/* MCAN1 to the ATA6561 transceiver U701 */
+	can1_default: can1_default {
+		group1 {
+			pinmux = <PC14C_MCAN1_CANTX1>,
+				 <PC12C_MCAN1_CANRX1>;
+		};
+	};
 };
