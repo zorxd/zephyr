@@ -15,6 +15,17 @@
 
 LOG_MODULE_REGISTER(entropy_mchp_trng_g2, CONFIG_ENTROPY_LOG_LEVEL);
 
+/*
+ * The TRNG of PIC32CZ CA70 (module 6334 version G) names the control register
+ * key KEY and has no mode register; the newer version names it WAKEY and adds
+ * the half-rate mode in TRNG_MR.
+ */
+#ifdef TRNG_CR_WAKEY_PASSWD
+#define MCHP_TRNG_CR_PASSWD TRNG_CR_WAKEY_PASSWD
+#else
+#define MCHP_TRNG_CR_PASSWD TRNG_CR_KEY_PASSWD
+#endif
+
 struct entropy_mchp_trng_config {
 	trng_registers_t *regs;
 	const struct sam_clk_cfg clock_cfg;
@@ -128,6 +139,7 @@ static int entropy_mchp_trng_init(const struct device *dev)
 
 	/* TRNG Provides a 32-bit Random Number at Maximum 84 Clock Cycles */
 	data->wait_us = DIV_ROUND_UP(84U * USEC_PER_SEC, rate);
+#ifdef TRNG_MR_HALFR_Msk
 	if (rate > MHZ(100)) {
 		/* HALFR must be written to '1' when the TRNG peripheral clock
 		 * frequency is above 100 MHz.
@@ -138,12 +150,13 @@ static int entropy_mchp_trng_init(const struct device *dev)
 	} else {
 		trng->TRNG_MR &= ~TRNG_MR_HALFR_Msk;
 	}
+#endif /* TRNG_MR_HALFR_Msk */
 
 	k_sem_init(&data->data_ready_sem, 0, 1);
 	cfg->irq_config_func(dev);
 
 	/* Enable the TRNG */
-	trng->TRNG_CR = TRNG_CR_WAKEY_PASSWD | TRNG_CR_ENABLE_Msk;
+	trng->TRNG_CR = MCHP_TRNG_CR_PASSWD | TRNG_CR_ENABLE_Msk;
 
 	return 0;
 }
