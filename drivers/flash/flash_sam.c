@@ -27,10 +27,29 @@ LOG_MODULE_REGISTER(flash_sam, CONFIG_FLASH_LOG_LEVEL);
 
 #define SAM_FLASH_WRITE_PAGE_SIZE (512)
 
+/*
+ * The Atmel headers name the EEFC register block Efc and its single-bit masks
+ * after the bit; the Microchip headers (PIC32CZ CA70) use efc_registers_t and
+ * a _Msk suffix.
+ */
+#ifdef EFC_REGS
+typedef efc_registers_t sam_flash_regs_t;
+#define SAM_FLASH_FMR_FRDY   EEFC_FMR_FRDY_Msk
+#define SAM_FLASH_FSR_FCMDE  EEFC_FSR_FCMDE_Msk
+#define SAM_FLASH_FSR_FLOCKE EEFC_FSR_FLOCKE_Msk
+#define SAM_FLASH_FSR_FLERR  EEFC_FSR_FLERR_Msk
+#else
+typedef Efc sam_flash_regs_t;
+#define SAM_FLASH_FMR_FRDY   EEFC_FMR_FRDY
+#define SAM_FLASH_FSR_FCMDE  EEFC_FSR_FCMDE
+#define SAM_FLASH_FSR_FLOCKE EEFC_FSR_FLOCKE
+#define SAM_FLASH_FSR_FLERR  EEFC_FSR_FLERR
+#endif
+
 typedef void (*sam_flash_irq_init_fn_ptr)(void);
 
 struct sam_flash_config {
-	Efc *regs;
+	sam_flash_regs_t *regs;
 	sam_flash_irq_init_fn_ptr irq_init;
 	off_t area_address;
 	off_t area_size;
@@ -77,16 +96,16 @@ static bool sam_flash_offset_is_on_write_page_boundary(off_t offset)
 
 static inline void sam_flash_mask_ready_interrupt(const struct sam_flash_config *config)
 {
-	Efc *regs = config->regs;
+	sam_flash_regs_t *regs = config->regs;
 
-	regs->EEFC_FMR &= ~EEFC_FMR_FRDY;
+	regs->EEFC_FMR &= ~SAM_FLASH_FMR_FRDY;
 }
 
 static inline void sam_flash_unmask_ready_interrupt(const struct sam_flash_config *config)
 {
-	Efc *regs = config->regs;
+	sam_flash_regs_t *regs = config->regs;
 
-	regs->EEFC_FMR |= EEFC_FMR_FRDY;
+	regs->EEFC_FMR |= SAM_FLASH_FMR_FRDY;
 }
 
 static void sam_flash_isr(const struct device *dev)
@@ -102,7 +121,7 @@ static int sam_flash_section_wait_until_ready(const struct device *dev)
 {
 	struct sam_flash_data *data = dev->data;
 	const struct sam_flash_config *config = dev->config;
-	Efc *regs = config->regs;
+	sam_flash_regs_t *regs = config->regs;
 	uint32_t eefc_fsr;
 
 	k_sem_reset(&data->ready_sem);
@@ -116,17 +135,17 @@ static int sam_flash_section_wait_until_ready(const struct device *dev)
 	/* FSR register is cleared on read */
 	eefc_fsr = regs->EEFC_FSR;
 
-	if (eefc_fsr & EEFC_FSR_FCMDE) {
+	if (eefc_fsr & SAM_FLASH_FSR_FCMDE) {
 		LOG_ERR("Invalid command requested");
 		return -EPERM;
 	}
 
-	if (eefc_fsr & EEFC_FSR_FLOCKE) {
+	if (eefc_fsr & SAM_FLASH_FSR_FLOCKE) {
 		LOG_ERR("Tried to modify locked region");
 		return -EPERM;
 	}
 
-	if (eefc_fsr & EEFC_FSR_FLERR) {
+	if (eefc_fsr & SAM_FLASH_FSR_FLERR) {
 		LOG_ERR("Programming failed");
 		return -EPERM;
 	}
@@ -229,7 +248,7 @@ static int sam_flash_read(const struct device *dev, off_t offset, void *data, si
 static int sam_flash_write_latch_buffer_to_page(const struct device *dev, off_t offset)
 {
 	const struct sam_flash_config *sam_config = dev->config;
-	Efc *regs = sam_config->regs;
+	sam_flash_regs_t *regs = sam_config->regs;
 	uint32_t page = offset / SAM_FLASH_WRITE_PAGE_SIZE;
 
 	regs->EEFC_FCR = EEFC_FCR_FCMD_WP | EEFC_FCR_FARG(page) | EEFC_FCR_FKEY_PASSWD;
@@ -301,7 +320,7 @@ static int sam_flash_write(const struct device *dev, off_t offset, const void *d
 static int sam_flash_unlock_write_page(const struct device *dev, uint16_t page_index)
 {
 	const struct sam_flash_config *sam_config = dev->config;
-	Efc *regs = sam_config->regs;
+	sam_flash_regs_t *regs = sam_config->regs;
 
 	/* Perform unlock command of write page */
 	regs->EEFC_FCR = EEFC_FCR_FCMD_CLB
@@ -334,7 +353,7 @@ static int sam_flash_unlock_page(const struct device *dev, const struct flash_pa
 static int sam_flash_erase_page(const struct device *dev, const struct flash_pages_info *info)
 {
 	const struct sam_flash_config *sam_config = dev->config;
-	Efc *regs = sam_config->regs;
+	sam_flash_regs_t *regs = sam_config->regs;
 	uint32_t page_index;
 	int ret;
 
@@ -507,7 +526,7 @@ static int sam_flash_init(const struct device *dev)
 	}											\
 												\
 	static const struct sam_flash_config sam_flash_config##inst = {				\
-		.regs = (Efc *)DT_INST_REG_ADDR(inst),						\
+		.regs = (sam_flash_regs_t *)DT_INST_REG_ADDR(inst),				\
 		.irq_init = sam_flash_irq_init_##inst,						\
 		.area_address = DT_REG_ADDR(SAM_FLASH_DEVICE),					\
 		.area_size = DT_REG_SIZE(SAM_FLASH_DEVICE),					\
