@@ -127,7 +127,7 @@ static int entropy_mchp_trng_init(const struct device *dev)
 	}
 
 	/* TRNG Provides a 32-bit Random Number at Maximum 84 Clock Cycles */
-	data->wait_us = 84 * 1000 * 1000 / rate;
+	data->wait_us = DIV_ROUND_UP(84U * USEC_PER_SEC, rate);
 	if (rate > MHZ(100)) {
 		/* HALFR must be written to '1' when the TRNG peripheral clock
 		 * frequency is above 100 MHz.
