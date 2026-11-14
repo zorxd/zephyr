@@ -18,6 +18,15 @@ LOG_MODULE_REGISTER(can_sam, CONFIG_CAN_LOG_LEVEL);
 
 #define DT_DRV_COMPAT atmel_sam_can
 
+/*
+ * On SAM E70/S70/V70/V71 and PIC32CZ CA70 (the same silicon, built with the
+ * Microchip device headers), MCAN is clocked by PCK5 from the 480 MHz UTMI PLL.
+ */
+#if defined(CONFIG_SOC_SERIES_SAMX7X) || defined(CONFIG_SOC_SERIES_PIC32CZ_CA70)
+#define CAN_SAM_CLOCK_PCK5 1
+#define CAN_SAM_UPLLCK_HZ  MHZ(480)
+#endif
+
 enum can_memory_addr_cfg {
 	/* CCFG_CANx gives the 16-bit MSB of the CAN DMA base address */
 	CAN_MEM_ADDR_CFG_MSB16_HIGH,
@@ -84,8 +93,8 @@ static int can_sam_get_core_clock(const struct device *dev, uint32_t *rate)
 	const struct can_mcan_config *mcan_cfg = dev->config;
 	const struct can_sam_config *sam_cfg = mcan_cfg->custom;
 
-#ifdef CONFIG_SOC_SERIES_SAMX7X
-	*rate = SOC_ATMEL_SAM_UPLLCK_FREQ_HZ / (sam_cfg->divider);
+#ifdef CAN_SAM_CLOCK_PCK5
+	*rate = CAN_SAM_UPLLCK_HZ / (sam_cfg->divider);
 
 	return 0;
 #else
@@ -97,14 +106,20 @@ static int can_sam_get_core_clock(const struct device *dev, uint32_t *rate)
 
 static void can_sam_clock_enable(const struct can_sam_config *sam_cfg)
 {
-#ifdef CONFIG_SOC_SERIES_SAMX7X
+#ifdef CAN_SAM_CLOCK_PCK5
+#ifdef PMC_REGS
+	/* Microchip device headers */
+	PMC_REGS->PMC_PCK[5] = PMC_PCK_CSS_UPLL_CLK | PMC_PCK_PRES(sam_cfg->divider - 1);
+	PMC_REGS->PMC_SCER = PMC_SCER_PCK5_Msk;
+#else
 	REG_PMC_PCK5 = PMC_PCK_CSS_UPLL_CLK | PMC_PCK_PRES(sam_cfg->divider - 1);
 	PMC->PMC_SCER |= PMC_SCER_PCK5;
+#endif
 
 	/* Enable CAN clock in PMC */
 	(void)clock_control_on(SAM_DT_PMC_CONTROLLER,
 			       (clock_control_subsys_t)&sam_cfg->clock_cfg);
-#endif /* CONFIG_SOC_SERIES_SAMX7X */
+#endif /* CAN_SAM_CLOCK_PCK5 */
 }
 
 static int can_sam_init(const struct device *dev)
@@ -225,7 +240,7 @@ static void config_can_##inst##_irq(void)                                       
 			   (.sram_sel = (mm_reg_t)DT_INST_REG_ADDR_BY_NAME(inst, sram_sel),))
 
 #define CAN_SAM_CLOCK_DIVIDER_DEFINE(inst)							\
-		IF_ENABLED(CONFIG_SOC_SERIES_SAMX7X, (.divider = DT_INST_PROP(inst, divider),))
+		IF_ENABLED(CAN_SAM_CLOCK_PCK5, (.divider = DT_INST_PROP(inst, divider),))
 
 #define CAN_INSTANCE_BY_NAME(inst)					\
 	((DT_INST_REG_ADDR_BY_NAME(inst, m_can) - MCAN0_BASE_ADDRESS) / 0x4000U)
