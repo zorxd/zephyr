@@ -256,9 +256,22 @@ static const struct can_mcan_ops can_mchp_ops = {
 	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, pinctrl_0),			\
 		    (PINCTRL_DT_INST_DEV_CONFIG_GET(inst)), (NULL))
 
+/*
+ * On PIC32CX SG devices with more than 64 KB SRAM, place the MCAN Message RAM
+ * buffers in a dedicated section to ensure they are located in the first 64 KB
+ * of SRAM. The M_CAN Message RAM element addresses are 16-bit offsets from the
+ * start of SRAM.
+ */
+#if defined(CONFIG_SOC_FAMILY_MICROCHIP_PIC32CX_SG) && (CONFIG_SRAM_SIZE > 64)
+#define CAN_MCHP_DT_INST_MRAM_DEFINE(inst, _name)                                                  \
+	CAN_MCAN_DT_INST_MRAM_DEFINE_SECTION(inst, _name, ".can_message_ram")
+#else
+#define CAN_MCHP_DT_INST_MRAM_DEFINE(inst, _name) CAN_MCAN_DT_INST_MRAM_DEFINE(inst, _name)
+#endif
+
 #define CAN_MCHP_CFG_INST(inst)                                                                    \
 	CAN_MCAN_DT_INST_CALLBACKS_DEFINE(inst, can_mchp_cbs_##inst);                              \
-	CAN_MCAN_DT_INST_MRAM_DEFINE(inst, can_mchp_mram_##inst);                                  \
+	CAN_MCHP_DT_INST_MRAM_DEFINE(inst, can_mchp_mram_##inst);                                  \
                                                                                                    \
 	static const struct can_mchp_config can_mchp_cfg_##inst = {                                \
 		.base = CAN_MCAN_DT_INST_MCAN_ADDR(inst),                                          \
