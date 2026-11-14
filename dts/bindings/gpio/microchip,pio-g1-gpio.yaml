@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+title: Microchip PIO GPIO controller (group g1)
+
+description: |
+  GPIO controller for one port of the Microchip PIO (group g1). The port
+  peripheral clock is enabled at init; it is needed to read inputs and detect
+  input changes.
+
+  Group g1 PIO GPIO driver supports following hardware peripherals:
+    - module name="PIO" id="11004" version="V"
+
+compatible: "microchip,pio-g1-gpio"
+
+include:
+  - name: base.yaml
+  - name: gpio-controller.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  "#gpio-cells":
+    const: 2
+
+gpio-cells:
+  - pin
+  - flags
