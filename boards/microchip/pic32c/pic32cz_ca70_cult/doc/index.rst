@@ -33,6 +33,10 @@ Connections and IOs
 The console is on UART1 (PA5 RX, PA6 TX), connected to the on-board debugger
 virtual COM port, at 115200 baud.
 
+MCAN0 (PB2 TX, PB3 RX) and MCAN1 (PC14 TX, PC12 RX) connect to the ATA6561
+CAN FD transceivers U700 and U701, whose standby inputs are tied low. MCAN0 is
+the ``zephyr,canbus`` controller. MCAN is clocked at 80 MHz from the UTMI PLL.
+
 The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 
