@@ -10,3 +10,21 @@ config CAN_MCHP_MCAN_G1
 	select PINCTRL
 	help
 	  Enable the Microchip M_CAN G1 CAN FD front end.
+
+config CAN_MCHP_MCAN_G2
+	bool "Microchip M_CAN G2 driver"
+	default y
+	depends on DT_HAS_MICROCHIP_MCAN_G2_ENABLED
+	depends on CLOCK_CONTROL
+	select CAN_MCAN
+	select PINCTRL
+	help
+	  Enable the Microchip M_CAN G2 CAN FD front end.
+
+config CAN_MCHP_MCAN_G2_MRAM_SECTION
+	bool
+	depends on CAN_MCHP_MCAN_G2
+	help
+	  Place the M_CAN message RAM in the .can_message_ram section. A SoC whose
+	  M_CAN core can only address the first 64 KB of SRAM enables this option
+	  and links the section at the start of SRAM.

@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+title: Microchip M_CAN G2 CAN FD controller
+
+description: |
+  Microchip M_CAN G2.
+
+  A Bosch M_CAN core with no Microchip wrapper: the M_CAN registers start at
+  offset 0 of the peripheral and both M_CAN interrupt lines are combined into
+  a single interrupt. The core addresses its message RAM with 16-bit offsets
+  from 0x20000000, so the message RAM must be located in the first 64 KB of
+  SRAM.
+
+  Supported families: PIC32CX SG.
+
+  Group g2 CAN driver supports following hardware peripherals:
+    - module name="CAN" id="U2003" version="3.2.1"
+
+  The CAN module 03723 (can_fd_u2003_v4) of PIC32CK SG/GC and PIC32CZ CA
+  has the same register layout plus MRCFG.OFFSET, which moves the 64 KB
+  message RAM window. Supporting it requires programming MRCFG.OFFSET.
+
+compatible: "microchip,mcan-g2"
+
+include:
+  - name: bosch,m_can-base.yaml
+  - name: pinctrl-device.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  clock-names:
+    required: true
+    description: |
+      Two entries: "mclk", the peripheral bus clock, and "gclk", the generic
+      clock feeding the M_CAN core.
+
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true
