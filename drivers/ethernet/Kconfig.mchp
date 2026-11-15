@@ -45,4 +45,9 @@ config ETH_MCHP_RX_THREAD_PRIORITY
 	  Ethernet Driver handles RX in thread.
 	  This options sets the priority of that thread.
 
+# The RX/TX buffers are kept coherent with the data cache line by line, which
+# requires cache line aligned network buffers.
+config NET_BUF_ALIGNMENT
+	default 32 if DCACHE
+
 endif # ETH_MCHP_GMAC_G1
