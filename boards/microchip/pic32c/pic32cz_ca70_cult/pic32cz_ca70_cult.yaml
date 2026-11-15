@@ -15,8 +15,10 @@ supported:
   - entropy
   - flash
   - gpio
+  - hwinfo
   - i2c
   - netif:eth
   - pinctrl
   - uart
+  - watchdog
 vendor: microchip
