@@ -23,6 +23,29 @@
 #include <zephyr/irq.h>
 #include <soc.h>
 
+/*
+ * The Atmel headers name the WDT register block Wdt and its single-bit masks
+ * after the bit; the Microchip headers (PIC32CZ CA70) use wdt_registers_t and
+ * a _Msk suffix.
+ */
+#ifdef WDT_REGS
+typedef wdt_registers_t sam_wdt_regs_t;
+#define SAM_WDT_MR_WDDIS     WDT_MR_WDDIS_Msk
+#define SAM_WDT_MR_WDIDLEHLT WDT_MR_WDIDLEHLT_Msk
+#define SAM_WDT_MR_WDDBGHLT  WDT_MR_WDDBGHLT_Msk
+#define SAM_WDT_MR_WDRSTEN   WDT_MR_WDRSTEN_Msk
+#define SAM_WDT_MR_WDFIEN    WDT_MR_WDFIEN_Msk
+#define SAM_WDT_CR_WDRSTT    WDT_CR_WDRSTT_Msk
+#else
+typedef Wdt sam_wdt_regs_t;
+#define SAM_WDT_MR_WDDIS     WDT_MR_WDDIS
+#define SAM_WDT_MR_WDIDLEHLT WDT_MR_WDIDLEHLT
+#define SAM_WDT_MR_WDDBGHLT  WDT_MR_WDDBGHLT
+#define SAM_WDT_MR_WDRSTEN   WDT_MR_WDRSTEN
+#define SAM_WDT_MR_WDFIEN    WDT_MR_WDFIEN
+#define SAM_WDT_CR_WDRSTT    WDT_CR_WDRSTT
+#endif
+
 #define LOG_LEVEL CONFIG_WDT_LOG_LEVEL
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(wdt_sam);
@@ -32,7 +55,7 @@ LOG_MODULE_REGISTER(wdt_sam);
 
 /* Device constant configuration parameters */
 struct wdt_sam_dev_cfg {
-	Wdt *regs;
+	sam_wdt_regs_t *regs;
 };
 
 struct wdt_sam_dev_data {
@@ -48,7 +71,7 @@ static void wdt_sam_isr(const struct device *dev)
 {
 	const struct wdt_sam_dev_cfg *config = dev->config;
 	uint32_t wdt_sr;
-	Wdt * const wdt = config->regs;
+	sam_wdt_regs_t * const wdt = config->regs;
 	struct wdt_sam_dev_data *data = dev->data;
 
 	/* Clear status bit to acknowledge interrupt by dummy read. */
@@ -84,7 +107,7 @@ static int wdt_sam_disable(const struct device *dev)
 {
 	const struct wdt_sam_dev_cfg *config = dev->config;
 
-	Wdt * const wdt = config->regs;
+	sam_wdt_regs_t * const wdt = config->regs;
 	struct wdt_sam_dev_data *data = dev->data;
 
 	/* since Watchdog mode register is 'write-once', we can't disable if
@@ -99,7 +122,7 @@ static int wdt_sam_disable(const struct device *dev)
 	/* Watchdog Mode register is 'write-once' only register.
 	 * Once disabled, it cannot be enabled until the device is reset
 	 */
-	wdt->WDT_MR |= WDT_MR_WDDIS;
+	wdt->WDT_MR |= SAM_WDT_MR_WDDIS;
 	data->mode_set = true;
 
 	return 0;
@@ -109,7 +132,7 @@ static int wdt_sam_setup(const struct device *dev, uint8_t options)
 {
 	const struct wdt_sam_dev_cfg *config = dev->config;
 
-	Wdt * const wdt = config->regs;
+	sam_wdt_regs_t * const wdt = config->regs;
 	struct wdt_sam_dev_data *data = dev->data;
 
 	if (!data->timeout_valid) {
@@ -125,12 +148,12 @@ static int wdt_sam_setup(const struct device *dev, uint8_t options)
 	}
 
 	if ((options & WDT_OPT_PAUSE_IN_SLEEP) == WDT_OPT_PAUSE_IN_SLEEP) {
-		data->mode |= WDT_MR_WDIDLEHLT;
+		data->mode |= SAM_WDT_MR_WDIDLEHLT;
 	}
 
 	if ((options & WDT_OPT_PAUSE_HALTED_BY_DBG) ==
 	    WDT_OPT_PAUSE_HALTED_BY_DBG) {
-		data->mode |= WDT_MR_WDDBGHLT;
+		data->mode |= SAM_WDT_MR_WDDBGHLT;
 	}
 
 	wdt->WDT_MR = data->mode;
@@ -171,13 +194,13 @@ static int wdt_sam_install_timeout(const struct device *dev,
 	switch (cfg->flags) {
 	case WDT_FLAG_RESET_SOC:
 		/*A Watchdog fault (underflow or error) activates all resets */
-		wdt_mode = WDT_MR_WDRSTEN;  /* WDT reset enable */
+		wdt_mode = SAM_WDT_MR_WDRSTEN;  /* WDT reset enable */
 		break;
 
 	case WDT_FLAG_RESET_NONE:
 		/* A Watchdog fault (underflow or error) asserts interrupt. */
 		if (cfg->callback) {
-			wdt_mode = WDT_MR_WDFIEN;   /* WDT fault interrupt. */
+			wdt_mode = SAM_WDT_MR_WDFIEN;   /* WDT fault interrupt. */
 			data->cb = cfg->callback;
 		} else {
 			LOG_ERR("Invalid(NULL) ISR callback passed\n");
@@ -190,7 +213,7 @@ static int wdt_sam_install_timeout(const struct device *dev,
 	case WDT_FLAG_RESET_CPU_CORE:
 		/*A Watchdog fault activates the processor reset*/
 		LOG_DBG("Configuring reset CPU only mode\n");
-		wdt_mode = WDT_MR_WDRSTEN   |   /* WDT reset enable */
+		wdt_mode = SAM_WDT_MR_WDRSTEN   |   /* WDT reset enable */
 			   WDT_MR_WDRPROC;      /* WDT reset processor only*/
 		break;
 #endif
@@ -217,9 +240,9 @@ static int wdt_sam_feed(const struct device *dev, int channel_id)
 	 * reloaded/fed with the 12-bit watchdog counter
 	 * value from WDT_MR and restarted
 	 */
-	Wdt * const wdt = config->regs;
+	sam_wdt_regs_t * const wdt = config->regs;
 
-	wdt->WDT_CR |= WDT_CR_KEY_PASSWD | WDT_CR_WDRSTT;
+	wdt->WDT_CR |= WDT_CR_KEY_PASSWD | SAM_WDT_CR_WDRSTT;
 
 	return 0;
 }
@@ -232,7 +255,7 @@ static DEVICE_API(wdt, wdt_sam_api) = {
 };
 
 static const struct wdt_sam_dev_cfg wdt_sam_cfg = {
-	.regs = (Wdt *)DT_INST_REG_ADDR(0),
+	.regs = (sam_wdt_regs_t *)DT_INST_REG_ADDR(0),
 };
 
 static void wdt_sam_irq_config(void)
