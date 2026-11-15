@@ -818,7 +818,7 @@ static int flash_mchp_write(const struct device *dev, off_t offset, const void *
 	}
 #endif /*!CONFIG_FLASH_HAS_UNALIGNED_WRITE*/
 
-	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_MSEC(10));
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 #ifdef CONFIG_FLASH_HAS_UNALIGNED_WRITE
 	/* Handle unaligned start */
@@ -893,7 +893,7 @@ static int flash_mchp_erase(const struct device *dev, off_t offset, size_t size)
 		return ret;
 	}
 
-	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_MSEC(10));
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 	while (size > 0U) {
 
@@ -943,7 +943,7 @@ static int flash_mchp_read(const struct device *dev, off_t offset, void *data, s
 	uint8_t *dst = (uint8_t *)data;
 	const uint8_t *src = (const uint8_t *)flash_base_addr + offset;
 
-	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_MSEC(10));
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 	for (size_t i = 0; i < len; i++) {
 		dst[i] = src[i];
@@ -1106,7 +1106,7 @@ static int flash_ex_op_user_row_write(const struct device *dev, const uintptr_t 
 
 	uint32_t num_quad_words = (len / SOC_NV_USERROW_WRITE_BLOCK_SIZE);
 
-	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_MSEC(10));
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 	for (uint32_t write_count = 0U; write_count < num_quad_words; write_count++) {
 		ret = flash_quadword_write(dev, buffer, address);
@@ -1146,7 +1146,7 @@ static int flash_ex_op_user_row_erase(const struct device *dev, const uintptr_t 
 	int ret = -EINVAL;
 	struct flash_mchp_dev_data *mchp_flash_data = dev->data;
 
-	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_MSEC(10));
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 	/* Erase the user page */
 	ret = flash_user_row_erase(dev, SOC_NV_USERROW_BASE_ADDR);
