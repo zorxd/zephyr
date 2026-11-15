@@ -47,6 +47,16 @@
 			reg = <0x20400000 DT_SIZE_K(512)>;
 		};
 
+		spi0: spi@40008000 {
+			compatible = "atmel,sam-spi";
+			reg = <0x40008000 0x4000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			interrupts = <21 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 21>;
+			status = "disabled";
+		};
+
 		twihs0: i2c@40018000 {
 			compatible = "atmel,sam-i2c-twihs";
 			reg = <0x40018000 0x100>;
@@ -108,6 +118,16 @@
 				#size-cells = <0>;
 				status = "disabled";
 			};
+		};
+
+		spi1: spi@40058000 {
+			compatible = "atmel,sam-spi";
+			reg = <0x40058000 0x4000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			interrupts = <42 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 42>;
+			status = "disabled";
 		};
 
 		twihs2: i2c@40060000 {
