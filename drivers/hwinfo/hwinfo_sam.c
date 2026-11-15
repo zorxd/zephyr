@@ -10,6 +10,23 @@
 #include <soc.h>
 #include <string.h>
 
+/*
+ * The Atmel headers name the EEFC register block Efc and its single-bit masks
+ * after the bit; the Microchip headers (PIC32CZ CA70) use efc_registers_t and
+ * a _Msk suffix.
+ */
+#ifdef EFC_REGS
+typedef efc_registers_t sam_efc_regs_t;
+#define SAM_EEFC_FSR_FRDY EEFC_FSR_FRDY_Msk
+#define SAM_EEFC_FMR_CLOE EEFC_FMR_CLOE_Msk
+#define SAM_EEFC_FMR_SCOD EEFC_FMR_SCOD_Msk
+#else
+typedef Efc sam_efc_regs_t;
+#define SAM_EEFC_FSR_FRDY EEFC_FSR_FRDY
+#define SAM_EEFC_FMR_CLOE EEFC_FMR_CLOE
+#define SAM_EEFC_FMR_SCOD EEFC_FMR_SCOD
+#endif
+
 static uint8_t sam_uid[16];
 
 ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
@@ -33,7 +50,7 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
  */
 __ramfunc static void hwinfo_sam_read_device_id(void)
 {
-	Efc *efc = (Efc *)DT_REG_ADDR(DT_INST(0, atmel_sam_flash_controller));
+	sam_efc_regs_t *efc = (sam_efc_regs_t *)DT_REG_ADDR(DT_INST(0, atmel_sam_flash_controller));
 	uint8_t *flash = (uint8_t *)CONFIG_FLASH_BASE_ADDRESS;
 	int i;
 
@@ -42,7 +59,7 @@ __ramfunc static void hwinfo_sam_read_device_id(void)
 	 * ready.
 	 */
 	efc->EEFC_FCR = EEFC_FCR_FKEY_PASSWD | EEFC_FCR_FCMD_STUI;
-	while ((efc->EEFC_FSR & EEFC_FSR_FRDY) == EEFC_FSR_FRDY) {
+	while ((efc->EEFC_FSR & SAM_EEFC_FSR_FRDY) == SAM_EEFC_FSR_FRDY) {
 		/* Wait */
 	}
 
@@ -57,14 +74,14 @@ __ramfunc static void hwinfo_sam_read_device_id(void)
 	 * be ready.
 	 */
 	efc->EEFC_FCR = EEFC_FCR_FKEY_PASSWD | EEFC_FCR_FCMD_SPUI;
-	while ((efc->EEFC_FSR & EEFC_FSR_FRDY) != EEFC_FSR_FRDY) {
+	while ((efc->EEFC_FSR & SAM_EEFC_FSR_FRDY) != SAM_EEFC_FSR_FRDY) {
 		/* Wait */
 	}
 }
 
 static int hwinfo_sam_init(void)
 {
-	Efc *efc = (Efc *)DT_REG_ADDR(DT_INST(0, atmel_sam_flash_controller));
+	sam_efc_regs_t *efc = (sam_efc_regs_t *)DT_REG_ADDR(DT_INST(0, atmel_sam_flash_controller));
 	uint32_t fmr;
 	unsigned int key;
 
@@ -75,10 +92,10 @@ static int hwinfo_sam_init(void)
 	fmr = efc->EEFC_FMR;
 
 #ifndef CONFIG_SOC_SERIES_SAM3X
-	efc->EEFC_FMR = (fmr & (~EEFC_FMR_CLOE)) | EEFC_FMR_SCOD;
+	efc->EEFC_FMR = (fmr & (~SAM_EEFC_FMR_CLOE)) | SAM_EEFC_FMR_SCOD;
 #else
 	/* SAM3x does not have loop optimization (EEFC_FMR_CLOE) */
-	efc->EEFC_FMR |= EEFC_FMR_SCOD;
+	efc->EEFC_FMR |= SAM_EEFC_FMR_SCOD;
 #endif
 
 	/* Read the device ID using code in RAM */

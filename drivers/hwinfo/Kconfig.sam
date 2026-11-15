@@ -4,7 +4,7 @@
 config HWINFO_SAM
 	bool "Atmel SAM device ID"
 	default y
-	depends on SOC_FAMILY_ATMEL_SAM && !SOC_SERIES_SAM4L
+	depends on (SOC_FAMILY_ATMEL_SAM && !SOC_SERIES_SAM4L) || SOC_SERIES_PIC32CZ_CA70
 	select HWINFO_HAS_DRIVER
 	help
 	  Enable Atmel SAM device ID hwinfo driver.
