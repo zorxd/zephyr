@@ -122,3 +122,25 @@
 		};
 	};
 };
+
+/* RMII PHY daughter board (for example LAN8720A) on header J700/J701. */
+&gmac {
+	pinctrl-0 = <&gmac_rmii>;
+	pinctrl-names = "default";
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
+	phy-handle = <&phy>;
+	status = "okay";
+};
+
+&mdio {
+	pinctrl-0 = <&mdio_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	phy: ethernet-phy@0 {
+		compatible = "ethernet-phy";
+		reg = <0>;
+		status = "okay";
+	};
+};
