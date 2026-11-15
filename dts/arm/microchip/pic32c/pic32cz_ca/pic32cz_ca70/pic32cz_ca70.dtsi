@@ -65,6 +65,23 @@
 			status = "disabled";
 		};
 
+		gmac: ethernet@40050000 {
+			compatible = "microchip,gmac-g1-eth";
+			reg = <0x40050000 0x4000>;
+			interrupts = <39 0>;
+			interrupt-names = "gmac";
+			num-queues = <6>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 39>;
+			status = "disabled";
+
+			mdio: mdio {
+				compatible = "microchip,gmac-g1-mdio";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+		};
+
 		twihs2: i2c@40060000 {
 			compatible = "atmel,sam-i2c-twihs";
 			reg = <0x40060000 0x100>;
