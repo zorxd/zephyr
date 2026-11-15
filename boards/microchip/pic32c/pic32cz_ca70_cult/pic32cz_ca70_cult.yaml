@@ -17,7 +17,9 @@ supported:
   - netif:eth
   - flash
   - gpio
+  - hwinfo
   - i2c
   - pinctrl
   - uart
+  - watchdog
 vendor: microchip
