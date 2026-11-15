@@ -11,13 +11,26 @@
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/drivers/clock_control/atmel_sam_pmc.h>
 
+/*
+ * The Atmel headers name the RSTC register block Rstc and its single-bit masks
+ * after the bit; the Microchip headers (PIC32CZ CA70) use rstc_registers_t and
+ * a _Msk suffix.
+ */
+#ifdef RSTC_REGS
+typedef rstc_registers_t sam_rstc_regs_t;
+#define SAM_RSTC_MR_URSTEN RSTC_MR_URSTEN_Msk
+#else
+typedef Rstc sam_rstc_regs_t;
+#define SAM_RSTC_MR_URSTEN RSTC_MR_URSTEN
+#endif
+
 BUILD_ASSERT(DT_NUM_INST_STATUS_OKAY(DT_DRV_COMPAT) == 1,
 	     "No atmel,sam-rstc compatible device found");
 
 int z_impl_hwinfo_get_reset_cause(uint32_t *cause)
 {
 	/* Get reason from Status Register */
-	uint32_t reason = ((Rstc *)DT_INST_REG_ADDR(0))->RSTC_SR & RSTC_SR_RSTTYP_Msk;
+	uint32_t reason = ((sam_rstc_regs_t *)DT_INST_REG_ADDR(0))->RSTC_SR & RSTC_SR_RSTTYP_Msk;
 
 	switch (reason) {
 	case RSTC_SR_RSTTYP_GENERAL_RST:
@@ -55,7 +68,7 @@ int z_impl_hwinfo_get_supported_reset_cause(uint32_t *supported)
 
 static int hwinfo_rstc_init(void)
 {
-	Rstc *regs = (Rstc *)DT_INST_REG_ADDR(0);
+	sam_rstc_regs_t *regs = (sam_rstc_regs_t *)DT_INST_REG_ADDR(0);
 	uint32_t mode;
 
 #if DT_INST_NODE_HAS_PROP(0, clocks)
@@ -72,9 +85,9 @@ static int hwinfo_rstc_init(void)
 	/* Enable/disable user reset on NRST */
 #if DT_INST_PROP(0, user_nrst)
 	mode &= ~RSTC_MR_KEY_Msk;
-	mode |= (RSTC_MR_URSTEN | RSTC_MR_KEY_PASSWD);
+	mode |= (SAM_RSTC_MR_URSTEN | RSTC_MR_KEY_PASSWD);
 #else
-	mode &= ~(RSTC_MR_URSTEN | RSTC_MR_KEY_Msk);
+	mode &= ~(SAM_RSTC_MR_URSTEN | RSTC_MR_KEY_Msk);
 	mode |= RSTC_MR_KEY_PASSWD;
 #endif
 
