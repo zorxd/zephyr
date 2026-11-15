@@ -24,6 +24,7 @@
 		zephyr,code-partition = &slot0_partition;
 		zephyr,flash-controller = &nvmctrl;
 		zephyr,entropy = &trng;
+		zephyr,canbus = &can0;
 	};
 
 	aliases {
@@ -213,6 +214,18 @@
 
 		sercom6 {
 			subsystem = <CLOCK_MCHP_GCLKPERIPH_ID_SERCOM6_CORE>;
+			gclkperiph-src = "gclk2";
+			gclkperiph-en = <0>;
+		};
+
+		can0 {
+			subsystem = <CLOCK_MCHP_GCLKPERIPH_ID_CAN0>;
+			gclkperiph-src = "gclk2";
+			gclkperiph-en = <0>;
+		};
+
+		can1 {
+			subsystem = <CLOCK_MCHP_GCLKPERIPH_ID_CAN1>;
 			gclkperiph-src = "gclk2";
 			gclkperiph-en = <0>;
 		};
@@ -422,5 +435,29 @@ i2c0: &sercom6 {
 		wp-gpios = <&porta 10 GPIO_ACTIVE_LOW>;
 		hold-gpios = <&porta 11 GPIO_ACTIVE_LOW>;
 		requires-ulbpr;
+	};
+};
+
+&can0 {
+	pinctrl-0 = <&can0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
+	};
+};
+
+/*
+ * CAN1 shares PB14/PB15 with TC5 (PWM). To use CAN1, place shunts on J402 and
+ * J403 pins 1-2, disable &tc5 and enable &can1.
+ */
+&can1 {
+	pinctrl-0 = <&can1_default>;
+	pinctrl-names = "default";
+	status = "disabled";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
 	};
 };
