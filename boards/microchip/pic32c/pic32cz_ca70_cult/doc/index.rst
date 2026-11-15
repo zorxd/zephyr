@@ -33,6 +33,16 @@ Connections and IOs
 The console is on UART1 (PA5 RX, PA6 TX), connected to the on-board debugger
 virtual COM port, at 115200 baud.
 
+UART4 can be used on J402 (pin 1 RX on PD18, pin 2 TX on PD19). Its pins and
+baud rate are described but it is disabled by default; enable it with an
+overlay:
+
+.. code-block:: devicetree
+
+   &uart4 {
+           status = "okay";
+   };
+
 USART0 can be used on the mikroBUS socket J803 (pin 3 RX on PB0, pin 4 TX on
 PB1). Its pins and baud rate are described but it is disabled by default;
 enable it with an overlay:
