@@ -39,6 +39,9 @@ tests:
   drivers.can.build_all.mchp_mcan_g1:
     platform_allow:
       - pic32cm_gc00_cpro
+  drivers.can.build_all.mchp_mcan_g2:
+    platform_allow:
+      - pic32cx_sg41_cult
   drivers.can.build_all.mcp2515:
     extra_configs:
       - CONFIG_CAN_MCUX_FLEXCAN=n
