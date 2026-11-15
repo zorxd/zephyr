@@ -11,6 +11,10 @@
 #include <zephyr/dt-bindings/i2c/i2c.h>
 
 / {
+	aliases {
+		watchdog0 = &wdt;
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -171,6 +175,20 @@
 				gpio-controller;
 				#gpio-cells = <2>;
 			};
+		};
+
+		rstc: rstc@400e1800 {
+			compatible = "atmel,sam-rstc";
+			reg = <0x400e1800 0x10>;
+			user-nrst;
+		};
+
+		wdt: watchdog@400e1850 {
+			compatible = "atmel,sam-watchdog";
+			reg = <0x400e1850 0xc>;
+			interrupts = <4 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 4>;
+			status = "disabled";
 		};
 	};
 };
