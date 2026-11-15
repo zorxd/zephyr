@@ -8,6 +8,7 @@ description: |
 
   Group G1 Ethernet device supports following hardware peripherals:
     - module name="GMAC" id="U2005" version="1.0.0"
+    - module name="GMAC" id="11046" version="S" (PIC32CZ CA70)
 
   The MDIO bus is provided by this device and is used to communicate
   with Ethernet PHY.
