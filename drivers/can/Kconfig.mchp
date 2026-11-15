@@ -18,6 +18,7 @@ config CAN_MCHP_MCAN_G2
 	depends on CLOCK_CONTROL
 	select CAN_MCAN
 	select PINCTRL
+	select PM_POLICY_DEVICE_CONSTRAINTS if PM
 	help
 	  Enable the Microchip M_CAN G2 CAN FD front end.
 
