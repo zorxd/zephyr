@@ -12,7 +12,9 @@ properties:
     required: true
 
   clocks:
-    required: true
+    description: |
+      Peripheral clock of the reset controller, enabled at boot. Omit it where
+      the reset controller has no PMC clock gate (PIC32CZ CA70).
 
   user-nrst:
     type: boolean
