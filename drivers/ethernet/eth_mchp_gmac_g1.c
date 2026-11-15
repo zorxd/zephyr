@@ -11,12 +11,20 @@
 #include <zephyr/net/ethernet.h>
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/clock_control/mchp_clock_control.h>
+#include <zephyr/cache.h>
 #include <zephyr/types.h>
 #include <zephyr/sys/ring_buffer.h>
 
 LOG_MODULE_REGISTER(eth_mchp_gmac_g1, CONFIG_ETHERNET_LOG_LEVEL);
 
 #define DT_DRV_COMPAT microchip_gmac_g1_eth
+
+/* Cache line size for the DMA buffer cache maintenance on SoCs with a data cache. */
+#if defined(CONFIG_DCACHE_LINE_SIZE) && (CONFIG_DCACHE_LINE_SIZE > 0)
+#define GMAC_DCACHE_LINE_SIZE CONFIG_DCACHE_LINE_SIZE
+#else
+#define GMAC_DCACHE_LINE_SIZE 32U
+#endif
 
 #define GMAC_PHY_CONN_TYPE_MII  0
 #define GMAC_PHY_CONN_TYPE_RMII 1
@@ -34,6 +42,12 @@ LOG_MODULE_REGISTER(eth_mchp_gmac_g1, CONFIG_ETHERNET_LOG_LEVEL);
 
 /* Memory alignment of the RX/TX Buffer Descriptor List */
 #define GMAC_DESC_ALIGNMENT 4
+
+#ifdef CONFIG_DCACHE
+BUILD_ASSERT((CONFIG_NET_BUF_ALIGNMENT % GMAC_DCACHE_LINE_SIZE) == 0 &&
+		     (CONFIG_NET_BUF_ALIGNMENT >= GMAC_DCACHE_LINE_SIZE),
+	     "Network buffers must be cache line aligned");
+#endif /* CONFIG_DCACHE */
 
 /* Total number of queues supported by GMAC hardware module */
 #define GMAC_QUEUE_NUM          DT_INST_PROP(0, num_queues)
@@ -191,6 +205,27 @@ static struct gmac_desc tx_desc_que0[MAIN_QUEUE_TX_DESC_COUNT] __nocache
 static struct net_buf *rx_frag_list_que0[MAIN_QUEUE_RX_DESC_COUNT];
 static uint8_t tx_frag_rb_buf_que0[MAIN_QUEUE_TX_DESC_COUNT * sizeof(uintptr_t)];
 
+/*
+ * Keep the data cache coherent with the GMAC DMA. The range is extended to whole
+ * cache lines; network buffers are cache line aligned when the data cache is
+ * enabled (NET_BUF_ALIGNMENT). These calls do nothing without a data cache.
+ */
+static inline void gmac_dcache_flush(const void *addr, size_t len)
+{
+	uintptr_t start = ROUND_DOWN((uintptr_t)addr, GMAC_DCACHE_LINE_SIZE);
+	uintptr_t end = ROUND_UP((uintptr_t)addr + len, GMAC_DCACHE_LINE_SIZE);
+
+	(void)sys_cache_data_flush_range((void *)start, end - start);
+}
+
+static inline void gmac_dcache_invalidate(const void *addr, size_t len)
+{
+	uintptr_t start = ROUND_DOWN((uintptr_t)addr, GMAC_DCACHE_LINE_SIZE);
+	uintptr_t end = ROUND_UP((uintptr_t)addr + len, GMAC_DCACHE_LINE_SIZE);
+
+	(void)sys_cache_data_invd_range((void *)start, end - start);
+}
+
 #define MODULO_INC(val, max)                                                                       \
 	{                                                                                          \
 		val++;                                                                             \
@@ -237,6 +272,7 @@ static int gmac_rx_descriptors_init(gmac_registers_t *gmac_regs, struct gmac_que
 			 "Misaligned RX buffer address");
 		__ASSERT(rx_buf->size == CONFIG_NET_BUF_DATA_SIZE,
 			 "Incorrect length of RX data buffer");
+		gmac_dcache_invalidate(rx_buf_addr, CONFIG_NET_BUF_DATA_SIZE);
 		rx_desc_list->buf_desc[i].addr = (uint32_t)rx_buf_addr & GMAC_RXW0_ADDR;
 		rx_desc_list->buf_desc[i].status = 0U;
 	}
@@ -578,6 +614,7 @@ static struct net_pkt *gmac_extract_and_replace_buffers(struct gmac_queue *queue
 			return NULL;
 		}
 
+		gmac_dcache_invalidate(frag->data, frag_len);
 		net_buf_add(frag, frag_len);
 		if (!last_frag) {
 			net_pkt_frag_insert(rx_pkt, frag);
@@ -588,6 +625,7 @@ static struct net_pkt *gmac_extract_and_replace_buffers(struct gmac_queue *queue
 		last_frag = frag;
 		frag = new_frag;
 		rx_frag_list[tail] = frag;
+		gmac_dcache_invalidate(frag->data, CONFIG_NET_BUF_DATA_SIZE);
 		rx_desc->status = 0U;
 		rx_desc->addr = ((uint32_t)frag->data & GMAC_RXW0_ADDR) |
 				(rx_desc->addr & GMAC_RXW0_WRAP);
@@ -733,6 +771,7 @@ static int eth_mchp_send(const struct device *dev, struct net_pkt *pkt)
 			return -EIO;
 		}
 
+		gmac_dcache_flush(frag_data, frag_len);
 		tx_desc = &tx_desc_list->buf_desc[tx_desc_list->head];
 		tx_desc->addr = (uint32_t)frag_data;
 		tx_desc->status |= GMAC_TXW1_USED;
