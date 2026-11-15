@@ -33,6 +33,16 @@ Connections and IOs
 The console is on UART1 (PA5 RX, PA6 TX), connected to the on-board debugger
 virtual COM port, at 115200 baud.
 
+UART4 can be used on J402 (pin 1 RX on PD18, pin 2 TX on PD19). Its pins and
+baud rate are described but it is disabled by default; enable it with an
+overlay:
+
+.. code-block:: devicetree
+
+   &uart4 {
+           status = "okay";
+   };
+
 The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 

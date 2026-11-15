@@ -82,3 +82,10 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+/* UART4 on J402; the pins are free for other uses unless UART4 is enabled. */
+&uart4 {
+	current-speed = <115200>;
+	pinctrl-0 = <&uart4_default>;
+	pinctrl-names = "default";
+};
