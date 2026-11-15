@@ -295,11 +295,31 @@ static inline void flash_set_write_mode(const struct device *dev, enum flash_mch
 static inline void flash_clear_interrupt_flag(const struct device *dev)
 {
 	struct flash_mchp_dev_data *mchp_flash_data = dev->data;
+	uint16_t status = NVM_REGS->NVMCTRL_INTFLAG;
 
-	mchp_flash_data->interrupt_flag_status = NVM_REGS->NVMCTRL_INTFLAG;
+	mchp_flash_data->interrupt_flag_status |= status;
 
 	/* Clear NVMCTRL INTFLAG register */
-	NVM_REGS->NVMCTRL_INTFLAG = mchp_flash_data->interrupt_flag_status;
+	NVM_REGS->NVMCTRL_INTFLAG = status;
+}
+
+/**
+ * @brief Discard the error status left by earlier operations.
+ *
+ * Clears the NVMCTRL_INTFLAG register and the status accumulated by the ISR,
+ * so that the next status check reports only errors of the command that is
+ * about to be issued.
+ *
+ * @param dev Pointer to the device structure representing the flash controller.
+ */
+static inline void flash_clear_error_status(const struct device *dev)
+{
+	struct flash_mchp_dev_data *mchp_flash_data = dev->data;
+	unsigned int key = irq_lock();
+
+	NVM_REGS->NVMCTRL_INTFLAG = NVM_REGS->NVMCTRL_INTFLAG;
+	mchp_flash_data->interrupt_flag_status = 0U;
+	irq_unlock(key);
 }
 
 /**
@@ -308,7 +328,8 @@ static inline void flash_clear_interrupt_flag(const struct device *dev)
  * This function examines the interrupt flag status of the NVMCTRL (Non-Volatile
  * Memory Controller) to determine if any errors have occurred. It checks for
  * address, programming, lock, and NVM errors The function returns a success or
- * failure code based on the presence of errors.
+ * failure code based on the presence of errors. Flags still pending in
+ * NVMCTRL_INTFLAG, for example while interrupts are locked, are included.
  *
  * @return Returns `FLASH_MCHP_SUCCESS` if no errors are detected, or
  *         `-EIO` if any error flags are set.
@@ -318,7 +339,13 @@ static int flash_get_interrupt_status_error(const struct device *dev)
 	int ret = FLASH_MCHP_SUCCESS;
 
 	struct flash_mchp_dev_data *mchp_flash_data = dev->data;
-	uint16_t status = mchp_flash_data->interrupt_flag_status;
+	unsigned int key = irq_lock();
+	uint16_t status;
+
+	flash_clear_interrupt_flag(dev);
+	status = mchp_flash_data->interrupt_flag_status;
+	mchp_flash_data->interrupt_flag_status = 0U;
+	irq_unlock(key);
 
 	/* Combine all error masks */
 	const uint16_t error_mask = NVMCTRL_INTFLAG_ADDRE_Msk | NVMCTRL_INTFLAG_PROGE_Msk |
@@ -341,16 +368,19 @@ static int flash_get_interrupt_status_error(const struct device *dev)
  *
  * @param dev Pointer to the device structure representing the flash controller.
  *
- * @note This function blocks execution until the NVMCTRL is ready.
+ * @return 0 if the NVMCTRL becomes ready, or -ETIMEDOUT if the wait expires.
  */
-static inline void flash_status_ready_wait(const struct device *dev)
+static inline int flash_status_ready_wait(const struct device *dev)
 {
 	/* Wait until the NVM controller is ready */
 	if (!WAIT_FOR(((NVM_REGS->NVMCTRL_STATUS & NVMCTRL_STATUS_READY_Msk) ==
 		       NVMCTRL_STATUS_READY_Msk),
 		      TIMEOUT_VALUE_US, k_busy_wait(DELAY_US))) {
 		LOG_ERR("NVMCTRL_STATUS_READY wait timed out");
+		return -ETIMEDOUT;
 	}
+
+	return FLASH_MCHP_SUCCESS;
 }
 
 /**
@@ -401,6 +431,7 @@ static int flash_doubleword_write(const struct device *dev, const void *data, ui
 	const uint32_t *src = (const uint32_t *)data;
 	uint32_t *dst = FLASH_MEMORY(address);
 
+	flash_clear_error_status(dev);
 	flash_pagebuffer_clear(dev);
 
 	flash_set_write_mode(dev, NVMCTRL_WMODE_ADW);
@@ -412,7 +443,10 @@ static int flash_doubleword_write(const struct device *dev, const void *data, ui
 		src++;
 	}
 
-	flash_status_ready_wait(dev);
+	ret = flash_status_ready_wait(dev);
+	if (ret != FLASH_MCHP_SUCCESS) {
+		return ret;
+	}
 
 	ret = flash_get_interrupt_status_error(dev);
 
@@ -440,6 +474,7 @@ static int flash_quadword_write(const struct device *dev, const void *data, uint
 	const uint32_t *src = (const uint32_t *)data;
 	uint32_t *dst = FLASH_MEMORY(address);
 
+	flash_clear_error_status(dev);
 	flash_pagebuffer_clear(dev);
 
 	flash_set_write_mode(dev, NVMCTRL_WMODE_AQW);
@@ -451,7 +486,10 @@ static int flash_quadword_write(const struct device *dev, const void *data, uint
 		src++;
 	}
 
-	flash_status_ready_wait(dev);
+	ret = flash_status_ready_wait(dev);
+	if (ret != FLASH_MCHP_SUCCESS) {
+		return ret;
+	}
 
 	ret = flash_get_interrupt_status_error(dev);
 
@@ -476,11 +514,16 @@ static int flash_erase_block(const struct device *dev, uint32_t address)
 {
 	int ret = EINVAL;
 
+	flash_clear_error_status(dev);
+
 	/* Set address and command */
 	NVM_REGS->NVMCTRL_ADDR = address;
 	flash_process_command(dev, NVMCTRL_CTRLB_CMD_EB);
 
-	flash_status_ready_wait(dev);
+	ret = flash_status_ready_wait(dev);
+	if (ret != FLASH_MCHP_SUCCESS) {
+		return ret;
+	}
 
 	ret = flash_get_interrupt_status_error(dev);
 
@@ -509,6 +552,7 @@ static int flash_page_write(const struct device *dev, const void *data, uint32_t
 	const uint32_t *src = (const uint32_t *)data;
 	uint32_t *dst = FLASH_MEMORY(address);
 
+	flash_clear_error_status(dev);
 	flash_pagebuffer_clear(dev);
 
 	flash_set_write_mode(dev, NVMCTRL_WMODE_AP);
@@ -520,7 +564,10 @@ static int flash_page_write(const struct device *dev, const void *data, uint32_t
 		src++;
 	}
 
-	flash_status_ready_wait(dev);
+	ret = flash_status_ready_wait(dev);
+	if (ret != FLASH_MCHP_SUCCESS) {
+		return ret;
+	}
 
 	ret = flash_get_interrupt_status_error(dev);
 
@@ -993,11 +1040,16 @@ static int flash_user_row_erase(const struct device *dev, uint32_t address)
 {
 	int ret = -EINVAL;
 
+	flash_clear_error_status(dev);
+
 	/* Set address and command */
 	NVM_REGS->NVMCTRL_ADDR = address;
 	flash_process_command(dev, NVMCTRL_CTRLB_CMD_EP);
 
-	flash_status_ready_wait(dev);
+	ret = flash_status_ready_wait(dev);
+	if (ret != FLASH_MCHP_SUCCESS) {
+		return ret;
+	}
 
 	ret = flash_get_interrupt_status_error(dev);
 
@@ -1111,8 +1163,8 @@ static int flash_ex_op_user_row_erase(const struct device *dev, const uintptr_t 
 /**
  * @brief Lock all regions of the SoC non-volatile flash.
  *
- * This function iterates over all lock regions of the SoC non-volatile flash and issues
- * a lock command for each region. It waits for the flash to be ready before issuing each command.
+ * This function locks each flash region and waits for READY before and after
+ * each command.
  *
  * @param dev Pointer to the flash device structure.
  * @param in  Unused input parameter (reserved for future use or interface compatibility).
@@ -1125,13 +1177,27 @@ static int flash_ex_op_region_lock(const struct device *dev, const uintptr_t in,
 	ARG_UNUSED(in);
 	ARG_UNUSED(out);
 	int ret = -EINVAL;
+	struct flash_mchp_dev_data *mchp_flash_data = dev->data;
+
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 	for (off_t offset = 0; offset < SOC_NV_FLASH_SIZE;
 	     offset += SOC_NV_FLASH_LOCK_REGION_SIZE) {
+		ret = flash_status_ready_wait(dev);
+		if (ret != FLASH_MCHP_SUCCESS) {
+			break;
+		}
+
+		flash_clear_error_status(dev);
 
 		/* Set address and command */
 		NVM_REGS->NVMCTRL_ADDR = offset + SOC_NV_FLASH_BASE_ADDRESS;
 		flash_process_command(dev, NVMCTRL_CTRLB_CMD_LR);
+
+		ret = flash_status_ready_wait(dev);
+		if (ret != FLASH_MCHP_SUCCESS) {
+			break;
+		}
 
 		ret = flash_get_interrupt_status_error(dev);
 		if (ret != FLASH_MCHP_SUCCESS) {
@@ -1139,15 +1205,16 @@ static int flash_ex_op_region_lock(const struct device *dev, const uintptr_t in,
 		}
 	}
 
+	k_mutex_unlock(&mchp_flash_data->flash_data_lock);
+
 	return ret;
 }
 
 /**
  * @brief Unlock all regions of the SoC non-volatile flash.
  *
- * This function iterates over all lock regions of the SoC non-volatile flash and issues
- * an unlock command for each region. It waits for the flash to be ready before issuing each
- * command.
+ * This function unlocks each flash region and waits for READY before and after
+ * each command.
  *
  * @param dev Pointer to the flash device structure.
  * @param in  Unused input parameter (reserved for future use or interface compatibility).
@@ -1160,19 +1227,35 @@ static int flash_ex_op_region_unlock(const struct device *dev, const uintptr_t i
 	ARG_UNUSED(in);
 	ARG_UNUSED(out);
 	int ret = -EINVAL;
+	struct flash_mchp_dev_data *mchp_flash_data = dev->data;
+
+	k_mutex_lock(&mchp_flash_data->flash_data_lock, K_FOREVER);
 
 	for (off_t offset = 0; offset < SOC_NV_FLASH_SIZE;
 	     offset += SOC_NV_FLASH_LOCK_REGION_SIZE) {
+		ret = flash_status_ready_wait(dev);
+		if (ret != FLASH_MCHP_SUCCESS) {
+			break;
+		}
+
+		flash_clear_error_status(dev);
 
 		/* Set address and command */
 		NVM_REGS->NVMCTRL_ADDR = offset + SOC_NV_FLASH_BASE_ADDRESS;
 		flash_process_command(dev, NVMCTRL_CTRLB_CMD_UR);
+
+		ret = flash_status_ready_wait(dev);
+		if (ret != FLASH_MCHP_SUCCESS) {
+			break;
+		}
 
 		ret = flash_get_interrupt_status_error(dev);
 		if (ret != FLASH_MCHP_SUCCESS) {
 			break;
 		}
 	}
+
+	k_mutex_unlock(&mchp_flash_data->flash_data_lock);
 
 	return ret;
 }
