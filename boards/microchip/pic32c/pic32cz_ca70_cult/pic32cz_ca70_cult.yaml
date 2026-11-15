@@ -14,6 +14,7 @@ supported:
   - eeprom
   - gpio
   - i2c
+  - netif:eth
   - pinctrl
   - uart
 vendor: microchip
