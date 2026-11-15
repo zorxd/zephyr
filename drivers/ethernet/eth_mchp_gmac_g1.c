@@ -54,11 +54,12 @@ BUILD_ASSERT((CONFIG_NET_BUF_ALIGNMENT % GMAC_DCACHE_LINE_SIZE) == 0 &&
 #define GMAC_PRIORITY_QUEUE_NUM (GMAC_QUEUE_NUM - 1)
 
 #if (GMAC_PRIORITY_QUEUE_NUM >= 1)
-BUILD_ASSERT(ARRAY_SIZE(GMAC->GMAC_TBQBAPQ) + 1 == GMAC_QUEUE_NUM,
+BUILD_ASSERT(ARRAY_SIZE(((gmac_registers_t *)0)->GMAC_TBQBAPQ) + 1 == GMAC_QUEUE_NUM,
 	     "GMAC_QUEUE_NUM doesn't match soc header");
 #endif /* (GMAC_PRIORITY_QUEUE_NUM >= 1) */
 
-#define GMAC_ACTIVE_QUEUE_NUM    (GMAC_QUEUE_NUM)
+/* Only the main queue carries traffic; the priority queues are kept idle. */
+#define GMAC_ACTIVE_QUEUE_NUM    1
 #define MAIN_QUEUE_RX_DESC_COUNT (CONFIG_ETH_MCHP_BUF_RX_COUNT + 1)
 #define MAIN_QUEUE_TX_DESC_COUNT (CONFIG_NET_BUF_TX_COUNT + 1)
 
@@ -204,6 +205,31 @@ static struct gmac_desc tx_desc_que0[MAIN_QUEUE_TX_DESC_COUNT] __nocache
 
 static struct net_buf *rx_frag_list_que0[MAIN_QUEUE_RX_DESC_COUNT];
 static uint8_t tx_frag_rb_buf_que0[MAIN_QUEUE_TX_DESC_COUNT * sizeof(uintptr_t)];
+
+#if (GMAC_PRIORITY_QUEUE_NUM >= 1)
+/*
+ * Only the main queue carries traffic. Each priority queue points to a single
+ * descriptor owned by software so that its DMA channel stays idle.
+ */
+static struct gmac_desc rx_desc_idle[GMAC_PRIORITY_QUEUE_NUM] __nocache
+	__aligned(GMAC_DESC_ALIGNMENT);
+
+static struct gmac_desc tx_desc_idle[GMAC_PRIORITY_QUEUE_NUM] __nocache
+	__aligned(GMAC_DESC_ALIGNMENT);
+
+static void gmac_priority_queues_idle(gmac_registers_t *gmac_regs)
+{
+	for (int i = 0; i < GMAC_PRIORITY_QUEUE_NUM; i++) {
+		rx_desc_idle[i].addr = GMAC_RXW0_WRAP;
+		rx_desc_idle[i].status = 0U;
+		tx_desc_idle[i].addr = 0U;
+		tx_desc_idle[i].status = GMAC_TXW1_USED | GMAC_TXW1_WRAP;
+
+		gmac_regs->GMAC_RBQBAPQ[i] = (uint32_t)&rx_desc_idle[i];
+		gmac_regs->GMAC_TBQBAPQ[i] = (uint32_t)&tx_desc_idle[i];
+	}
+}
+#endif /* GMAC_PRIORITY_QUEUE_NUM >= 1 */
 
 /*
  * Keep the data cache coherent with the GMAC DMA. The range is extended to whole
@@ -963,14 +989,16 @@ static void eth_mchp_iface_init(struct net_if *iface)
 		net_if_set_link_addr(iface, mac_addr, sizeof(mac_addr), NET_LINK_ETHERNET);
 	}
 
-	for (int i = GMAC_QUE_0; i < GMAC_QUEUE_NUM; i++) {
-		result = gmac_queue_init(gmac_regs, &dev_data->queue_list[i]);
-		if (result < 0) {
-			LOG_ERR("Unable to initialize ETH queue%d", i);
+	result = gmac_queue_init(gmac_regs, &dev_data->queue_list[GMAC_QUE_0]);
+	if (result < 0) {
+		LOG_ERR("Unable to initialize ETH queue%d", GMAC_QUE_0);
 
-			return;
-		}
+		return;
 	}
+
+#if (GMAC_PRIORITY_QUEUE_NUM >= 1)
+	gmac_priority_queues_idle(gmac_regs);
+#endif /* GMAC_PRIORITY_QUEUE_NUM >= 1 */
 
 	if (device_is_ready(cfg->phy_dev)) {
 		net_if_carrier_off(iface);
