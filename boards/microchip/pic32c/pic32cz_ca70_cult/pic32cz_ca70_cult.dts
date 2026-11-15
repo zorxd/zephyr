@@ -98,3 +98,7 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+&wdt {
+	status = "okay";
+};
