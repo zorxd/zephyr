@@ -8,6 +8,8 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/pm/policy.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
 
 #include "can_mcan.h"
@@ -33,6 +35,22 @@ struct can_mchp_mcan_g2_config {
 	const struct pinctrl_dev_config *pcfg;
 	void (*config_irq)(void);
 };
+
+#ifdef CONFIG_PM_POLICY_DEVICE_CONSTRAINTS
+/* Bit in can_mchp_mcan_g2_data.flags: this controller holds its power state locks. */
+#define CAN_MCHP_MCAN_G2_PM_LOCK_HELD 0
+
+struct can_mchp_mcan_g2_data {
+	atomic_t flags;
+};
+
+#define CAN_MCHP_MCAN_G2_DATA_DEFINE(inst)                                                         \
+	static struct can_mchp_mcan_g2_data can_mchp_mcan_g2_data_##inst
+#define CAN_MCHP_MCAN_G2_DATA_PTR(inst) (&can_mchp_mcan_g2_data_##inst)
+#else
+#define CAN_MCHP_MCAN_G2_DATA_DEFINE(inst)
+#define CAN_MCHP_MCAN_G2_DATA_PTR(inst) NULL
+#endif /* CONFIG_PM_POLICY_DEVICE_CONSTRAINTS */
 
 static int can_mchp_mcan_g2_read_reg(const struct device *dev, uint16_t reg, uint32_t *val)
 {
@@ -151,10 +169,50 @@ static int can_mchp_mcan_g2_init(const struct device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_POLICY_DEVICE_CONSTRAINTS
+/*
+ * The M_CAN reads and writes its message RAM as an AHB bus master. Keep the power states listed
+ * in zephyr,disabling-power-states, such as one that stops the AHB clock, locked while the
+ * controller is started.
+ *
+ * The flag makes each controller hold its locks at most once, whatever the sequence of start and
+ * stop calls, including concurrent ones. The idle thread cannot run between a successful start
+ * and taking the locks, as the calling thread is still runnable.
+ */
+static int can_mchp_mcan_g2_start(const struct device *dev)
+{
+	const struct can_mcan_data *mcan_data = dev->data;
+	struct can_mchp_mcan_g2_data *data = mcan_data->custom;
+	int ret = can_mcan_start(dev);
+
+	if (ret == 0 && !atomic_test_and_set_bit(&data->flags, CAN_MCHP_MCAN_G2_PM_LOCK_HELD)) {
+		pm_policy_device_power_lock_get(dev);
+	}
+
+	return ret;
+}
+
+static int can_mchp_mcan_g2_stop(const struct device *dev)
+{
+	const struct can_mcan_data *mcan_data = dev->data;
+	struct can_mchp_mcan_g2_data *data = mcan_data->custom;
+	int ret = can_mcan_stop(dev);
+
+	if (ret == 0 && atomic_test_and_clear_bit(&data->flags, CAN_MCHP_MCAN_G2_PM_LOCK_HELD)) {
+		pm_policy_device_power_lock_put(dev);
+	}
+
+	return ret;
+}
+#else
+#define can_mchp_mcan_g2_start can_mcan_start
+#define can_mchp_mcan_g2_stop  can_mcan_stop
+#endif /* CONFIG_PM_POLICY_DEVICE_CONSTRAINTS */
+
 static DEVICE_API(can, can_mchp_mcan_g2_driver_api) = {
 	.get_capabilities = can_mcan_get_capabilities,
-	.start = can_mcan_start,
-	.stop = can_mcan_stop,
+	.start = can_mchp_mcan_g2_start,
+	.stop = can_mchp_mcan_g2_stop,
 	.set_mode = can_mcan_set_mode,
 	.set_timing = can_mcan_set_timing,
 	.send = can_mcan_send,
@@ -226,7 +284,8 @@ static const struct can_mcan_ops can_mchp_mcan_g2_ops = {
 		CAN_MCAN_DT_CONFIG_INST_GET(inst, &can_mchp_mcan_g2_cfg_##inst,                    \
 					    &can_mchp_mcan_g2_ops, &can_mchp_mcan_g2_cbs_##inst);  \
                                                                                                    \
-	CAN_MCAN_DATA_DEFINE(can_mcan_data_##inst, NULL);                                          \
+	CAN_MCHP_MCAN_G2_DATA_DEFINE(inst);                                                        \
+	CAN_MCAN_DATA_DEFINE(can_mcan_data_##inst, CAN_MCHP_MCAN_G2_DATA_PTR(inst));               \
                                                                                                    \
 	CAN_DEVICE_DT_INST_DEFINE(inst, can_mchp_mcan_g2_init, NULL, &can_mcan_data_##inst,        \
 				  &can_mcan_cfg_##inst, POST_KERNEL, CONFIG_CAN_INIT_PRIORITY,     \
