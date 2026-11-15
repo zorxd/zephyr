@@ -20,6 +20,29 @@ LOG_MODULE_REGISTER(eth_mchp_gmac_g1, CONFIG_ETHERNET_LOG_LEVEL);
 
 #define DT_DRV_COMPAT microchip_gmac_g1_eth
 
+/* PIC32CZ CA70: one PMC peripheral clock instead of the MCLK AHB/APB clocks. */
+#if DT_NODE_HAS_COMPAT(DT_INST_CLOCKS_CTLR(0), microchip_sam_pmc)
+#include <zephyr/drivers/clock_control/mchp_sam_pmc.h>
+#define GMAC_CLOCK_PMC 1
+#endif
+
+/*
+ * The PIC32CZ CA70 device headers (GMAC 11046) name a few registers and values
+ * differently from the SAM D5x/E5x and PIC32CX SG headers (GMAC U2005).
+ */
+#ifdef CONFIG_SOC_SERIES_PIC32CZ_CA70
+#define GMAC_NCFGR_CLK_MCK8  GMAC_NCFGR_CLK_MCK_8
+#define GMAC_NCFGR_CLK_MCK16 GMAC_NCFGR_CLK_MCK_16
+#define GMAC_NCFGR_CLK_MCK32 GMAC_NCFGR_CLK_MCK_32
+#define GMAC_NCFGR_CLK_MCK48 GMAC_NCFGR_CLK_MCK_48
+#define GMAC_NCFGR_CLK_MCK64 GMAC_NCFGR_CLK_MCK_64
+#define GMAC_NCFGR_CLK_MCK96 GMAC_NCFGR_CLK_MCK_96
+#define GMAC_RSR_RESETVALUE  0U
+#define GMAC_SA_REGS(gmac)   ((gmac)->GMAC_SA)
+#else
+#define GMAC_SA_REGS(gmac) ((gmac)->SA)
+#endif /* CONFIG_SOC_SERIES_PIC32CZ_CA70 */
+
 /* Cache line size for the DMA buffer cache maintenance on SoCs with a data cache. */
 #if defined(CONFIG_DCACHE_LINE_SIZE) && (CONFIG_DCACHE_LINE_SIZE > 0)
 #define GMAC_DCACHE_LINE_SIZE CONFIG_DCACHE_LINE_SIZE
@@ -107,7 +130,15 @@ BUILD_ASSERT(ARRAY_SIZE(((gmac_registers_t *)0)->GMAC_TBQBAPQ) + 1 == GMAC_QUEUE
 	(GMAC_IER_RCOMP_Msk | GMAC_INT_RX_ERR_BITS | GMAC_IER_TCOMP_Msk | GMAC_INT_TX_ERR_BITS |   \
 	 GMAC_IER_HRESP_Msk)
 
+#ifdef CONFIG_SOC_SERIES_PIC32CZ_CA70
+/*
+ * Use the full transmit packet buffer: with TXPBMS cleared it is halved, which
+ * leaves the main queue too little room for full size frames.
+ */
+#define GMAC_DMA_QUEUE_FLAGS GMAC_DCFGR_TXPBMS_Msk
+#else
 #define GMAC_DMA_QUEUE_FLAGS (0)
+#endif /* CONFIG_SOC_SERIES_PIC32CZ_CA70 */
 
 enum queue_idx {
 	GMAC_QUE_0, /* Main queue */
@@ -167,8 +198,13 @@ struct gmac_dev_config {
 	const struct pinctrl_dev_config *pinctrl_cfg;
 	void (*config_func)(void);
 	const struct device *phy_dev;
+#ifdef GMAC_CLOCK_PMC
+	const struct device *clock_dev;
+	struct sam_clk_cfg clock_cfg;
+#else
 	clock_control_subsys_t mclk_apb_sys;
 	clock_control_subsys_t mclk_ahb_sys;
+#endif /* GMAC_CLOCK_PMC */
 	const struct net_eth_mac_config mcfg;
 };
 
@@ -368,8 +404,8 @@ static void gmac_mac_addr_set(gmac_registers_t *gmac, uint8_t index, uint8_t mac
 			       (mac_addr[1] << ETH_MCHP_SHIFT_1_BYTE) | (mac_addr[0]);
 
 	__ASSERT(index < 4, "index has to be in the range 0..3");
-	gmac->SA[index].GMAC_SAB = GMAC_SAB_ADDR(bottom_addr);
-	gmac->SA[index].GMAC_SAT = GMAC_SAT_ADDR(top_addr);
+	GMAC_SA_REGS(gmac)[index].GMAC_SAB = GMAC_SAB_ADDR(bottom_addr);
+	GMAC_SA_REGS(gmac)[index].GMAC_SAT = GMAC_SAT_ADDR(top_addr);
 }
 
 static void gmac_tx_completed(gmac_registers_t *gmac, struct gmac_queue *queue)
@@ -496,8 +532,13 @@ static int gmac_init(const struct device *dev, gmac_registers_t *gmac)
 	gmac->GMAC_HRT = UINT32_MAX;
 	gmac->GMAC_RSR = GMAC_RSR_RESETVALUE;
 
+#ifdef GMAC_CLOCK_PMC
+	retval = clock_control_get_rate(cfg->clock_dev, (clock_control_subsys_t)&cfg->clock_cfg,
+					&clk_freq_hz);
+#else
 	retval = clock_control_get_rate(DEVICE_DT_GET(DT_NODELABEL(clock)), cfg->mclk_apb_sys,
 					&clk_freq_hz);
+#endif /* GMAC_CLOCK_PMC */
 	if (retval < 0) {
 		LOG_ERR("ETH_MCHP_GET_CLOCK_FREQ Failed");
 
@@ -899,6 +940,14 @@ static int eth_mchp_initialize(const struct device *dev)
 
 	cfg->config_func();
 
+#ifdef GMAC_CLOCK_PMC
+	retval = clock_control_on(cfg->clock_dev, (clock_control_subsys_t)&cfg->clock_cfg);
+	if ((retval != 0) && (retval != -EALREADY)) {
+		LOG_ERR("Failed to enable the PMC clock for Ethernet: %d", retval);
+
+		return retval;
+	}
+#else
 	retval = clock_control_on(DEVICE_DT_GET(DT_NODELABEL(clock)), cfg->mclk_apb_sys);
 	if ((retval != 0) && (retval != -EALREADY)) {
 		LOG_ERR("Failed to enable the MCLK APB for Ethernet: %d", retval);
@@ -912,6 +961,7 @@ static int eth_mchp_initialize(const struct device *dev)
 
 		return retval;
 	}
+#endif /* GMAC_CLOCK_PMC */
 
 	retval = pinctrl_apply_state(cfg->pinctrl_cfg, PINCTRL_STATE_DEFAULT);
 	if (retval != 0) {
@@ -1154,8 +1204,13 @@ static const struct gmac_dev_config eth_config = {
 	.pinctrl_cfg = PINCTRL_DT_INST_DEV_CONFIG_GET(0),
 	.config_func = eth_irq_config,
 	.mcfg = NET_ETH_MAC_DT_INST_CONFIG_INIT(0),
+#ifdef GMAC_CLOCK_PMC
+	.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(0)),
+	.clock_cfg = SAM_DT_INST_CLOCK_PMC_CFG(0),
+#else
 	.mclk_apb_sys = (void *)DT_INST_CLOCKS_CELL_BY_NAME(0, mclk_apb, subsystem),
 	.mclk_ahb_sys = (void *)DT_INST_CLOCKS_CELL_BY_NAME(0, mclk_ahb, subsystem),
+#endif /* GMAC_CLOCK_PMC */
 	.phy_dev = DEVICE_DT_GET(DT_INST_PHANDLE(0, phy_handle))};
 
 static struct gmac_dev_data eth_data;
