@@ -191,3 +191,11 @@
 		max-bitrate = <5000000>;
 	};
 };
+
+/* Chip selects: Arduino D10 (PD25) and mikroBUS CS (PC18). */
+&spi0 {
+	pinctrl-0 = <&spi0_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&piod 25 GPIO_ACTIVE_LOW>, <&pioc 18 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
