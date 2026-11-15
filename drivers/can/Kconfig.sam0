@@ -16,3 +16,11 @@ config CAN_SAM0_MRAM_SECTION
 	  Place the M_CAN message RAM in the .can_message_ram section. A SoC whose M_CAN core can
 	  only address the first 64 KB of SRAM, but which has more SRAM than that, enables this
 	  option and links the section at the start of SRAM.
+
+config CAN_SAM0_IDLE_INHIBIT
+	bool
+	depends on CAN_SAM0
+	help
+	  Keep the CPU out of the WFI sleep while a controller is started. A SoC where WFI stops
+	  the AHB clock of the M_CAN, which then cannot access its message RAM, enables this
+	  option and provides soc_cpu_idle_inhibit_get() and soc_cpu_idle_inhibit_put().
