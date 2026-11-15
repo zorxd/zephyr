@@ -20,6 +20,7 @@ supported:
   - i2c
   - netif:eth
   - pinctrl
+  - spi
   - uart
   - watchdog
 vendor: microchip

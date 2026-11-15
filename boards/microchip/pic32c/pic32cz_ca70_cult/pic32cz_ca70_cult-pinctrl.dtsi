@@ -58,4 +58,13 @@
 				 <PC12C_MCAN1_CANRX1>;
 		};
 	};
+
+	/* SPI0 to the Arduino (D11 MOSI, D12 MISO, D13 SCK) and mikroBUS headers */
+	spi0_default: spi0_default {
+		group1 {
+			pinmux = <PD20B_SPI0_MISO>,
+				 <PD21B_SPI0_MOSI>,
+				 <PD22B_SPI0_SPCK>;
+		};
+	};
 };
