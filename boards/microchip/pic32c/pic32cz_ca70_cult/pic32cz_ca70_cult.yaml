@@ -20,6 +20,7 @@ supported:
   - hwinfo
   - i2c
   - pinctrl
+  - spi
   - uart
   - watchdog
 vendor: microchip
