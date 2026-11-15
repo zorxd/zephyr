@@ -76,4 +76,13 @@
 			bias-pull-up;
 		};
 	};
+
+	/* UART4 on J402 (pin 1 RX, pin 2 TX) */
+	uart4_default: uart4_default {
+		group1 {
+			pinmux = <PD18C_UART4_URXD4>,
+				 <PD19C_UART4_UTXD4>;
+			bias-pull-up;
+		};
+	};
 };
