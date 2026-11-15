@@ -38,6 +38,10 @@ address 0x56 is the ``eeprom-0`` alias, and the read-only factory serial number
 and EUI-48 MAC address are at address 0x5e. Jumper J603 sets address bit A0;
 the devicetree describes the A0 low setting.
 
+Ethernet needs an RMII PHY daughter board, such as the LAN8720A PHY daughter
+board, on header J700/J701. The GMAC uses PD0 to PD9, the PHY is at MDIO address
+0 and the MAC address is read from the AT24MAC402 EEPROM.
+
 The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 
