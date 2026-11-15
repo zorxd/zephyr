@@ -36,6 +36,10 @@ virtual COM port, at 115200 baud.
 The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 
+Ethernet needs an RMII PHY daughter board, such as the LAN8720A PHY daughter
+board, on header J700/J701. The GMAC uses PD0 to PD9, the PHY is at MDIO address
+0 and the MAC address is read from the AT24MAC402 EEPROM.
+
 MCAN0 (PB2 TX, PB3 RX) and MCAN1 (PC14 TX, PC12 RX) connect to the ATA6561
 CAN FD transceivers U700 and U701, whose standby inputs are tied low. MCAN0 is
 the ``zephyr,canbus`` controller. MCAN is clocked at 80 MHz from the UTMI PLL.
