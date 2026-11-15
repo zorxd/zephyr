@@ -12,6 +12,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/clock_control/mchp_clock_control.h>
 #include <zephyr/cache.h>
+#include <zephyr/sys/barrier.h>
 #include <zephyr/types.h>
 #include <zephyr/sys/ring_buffer.h>
 
@@ -653,6 +654,8 @@ static struct net_pkt *gmac_extract_and_replace_buffers(struct gmac_queue *queue
 		rx_frag_list[tail] = frag;
 		gmac_dcache_invalidate(frag->data, CONFIG_NET_BUF_DATA_SIZE);
 		rx_desc->status = 0U;
+		/* Write the status word before giving the descriptor back to the GMAC. */
+		barrier_dmem_fence_full();
 		rx_desc->addr = ((uint32_t)frag->data & GMAC_RXW0_ADDR) |
 				(rx_desc->addr & GMAC_RXW0_WRAP);
 
@@ -827,12 +830,17 @@ static int eth_mchp_send(const struct device *dev, struct net_pkt *pkt)
 	MODULO_DEC(head_desc_index, tx_desc_list->len);
 	frag = pkt->frags;
 
+	/* Write all the fragment descriptors before handing them to the GMAC. */
+	barrier_dmem_fence_full();
+
 	while (pkt_buff_cnt) {
 		tx_desc_list->buf_desc[head_desc_index].status &= ~GMAC_TXW1_USED;
 		MODULO_DEC(head_desc_index, tx_desc_list->len);
 		pkt_buff_cnt--;
 	}
 
+	/* Make the released descriptors visible before starting the transmission. */
+	barrier_dmem_fence_full();
 	gmac_regs->GMAC_NCR |= GMAC_NCR_TSTART_Msk;
 
 	return 0;
