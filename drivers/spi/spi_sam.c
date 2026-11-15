@@ -26,6 +26,37 @@ LOG_MODULE_REGISTER(spi_sam);
 #include <zephyr/sys/util.h>
 #include <soc.h>
 
+/*
+ * The Atmel headers name the SPI register block Spi and its single-bit masks
+ * after the bit; the Microchip headers (PIC32CZ CA70) use spi_registers_t and
+ * a _Msk suffix.
+ */
+#ifdef SPI0_REGS
+typedef spi_registers_t sam_spi_regs_t;
+#define SAM_SPI_SR_RDRF    SPI_SR_RDRF_Msk
+#define SAM_SPI_SR_TDRE    SPI_SR_TDRE_Msk
+#define SAM_SPI_SR_TXEMPTY SPI_SR_TXEMPTY_Msk
+#define SAM_SPI_MR_MSTR    SPI_MR_MSTR_Msk
+#define SAM_SPI_MR_MODFDIS SPI_MR_MODFDIS_Msk
+#define SAM_SPI_MR_LLB     SPI_MR_LLB_Msk
+#define SAM_SPI_CSR_NCPHA  SPI_CSR_NCPHA_Msk
+#define SAM_SPI_CSR_CPOL   SPI_CSR_CPOL_Msk
+#define SAM_SPI_CR_SPIEN   SPI_CR_SPIEN_Msk
+#define SAM_SPI_CR_SPIDIS  SPI_CR_SPIDIS_Msk
+#else
+typedef Spi sam_spi_regs_t;
+#define SAM_SPI_SR_RDRF    SPI_SR_RDRF
+#define SAM_SPI_SR_TDRE    SPI_SR_TDRE
+#define SAM_SPI_SR_TXEMPTY SPI_SR_TXEMPTY
+#define SAM_SPI_MR_MSTR    SPI_MR_MSTR
+#define SAM_SPI_MR_MODFDIS SPI_MR_MODFDIS
+#define SAM_SPI_MR_LLB     SPI_MR_LLB
+#define SAM_SPI_CSR_NCPHA  SPI_CSR_NCPHA
+#define SAM_SPI_CSR_CPOL   SPI_CSR_CPOL
+#define SAM_SPI_CR_SPIEN   SPI_CR_SPIEN
+#define SAM_SPI_CR_SPIDIS  SPI_CR_SPIDIS
+#endif
+
 #define SAM_SPI_CHIP_SELECT_COUNT			4
 
 /* Number of bytes in transfer before using DMA if available */
@@ -33,7 +64,7 @@ LOG_MODULE_REGISTER(spi_sam);
 
 /* Device constant configuration parameters */
 struct spi_sam_config {
-	Spi *regs;
+	sam_spi_regs_t *regs;
 	const struct atmel_sam_pmc_config clock_cfg;
 	const struct pinctrl_dev_config *pcfg;
 	bool loopback;
@@ -96,7 +127,7 @@ static int spi_sam_configure(const struct device *dev,
 {
 	const struct spi_sam_config *cfg = dev->config;
 	struct spi_sam_data *data = dev->data;
-	Spi *regs = cfg->regs;
+	sam_spi_regs_t *regs = cfg->regs;
 	uint32_t spi_mr = 0U, spi_csr = 0U;
 	uint16_t spi_csr_idx = spi_cs_is_gpio(config) ? 0 : config->peripheral;
 	uint8_t word_size = SPI_WORD_SIZE_GET(config->operation);
@@ -125,19 +156,19 @@ static int spi_sam_configure(const struct device *dev,
 	/* Set controller mode, disable mode fault detection, set fixed peripheral
 	 * select mode.
 	 */
-	spi_mr |= (SPI_MR_MSTR | SPI_MR_MODFDIS);
+	spi_mr |= (SAM_SPI_MR_MSTR | SAM_SPI_MR_MODFDIS);
 	spi_mr |= SPI_MR_PCS(spi_peripheral_to_mr_pcs(spi_csr_idx));
 
 	if (cfg->loopback) {
-		spi_mr |= SPI_MR_LLB;
+		spi_mr |= SAM_SPI_MR_LLB;
 	}
 
 	if ((config->operation & SPI_MODE_CPOL) != 0U) {
-		spi_csr |= SPI_CSR_CPOL;
+		spi_csr |= SAM_SPI_CSR_CPOL;
 	}
 
 	if ((config->operation & SPI_MODE_CPHA) == 0U) {
-		spi_csr |= SPI_CSR_NCPHA;
+		spi_csr |= SAM_SPI_CSR_NCPHA;
 	}
 
 	if (word_size < 8 || word_size > 16) {
@@ -147,14 +178,26 @@ static int spi_sam_configure(const struct device *dev,
 	spi_csr |= SPI_CSR_BITS(word_size - 8);
 
 	/* Use the requested or next highest possible frequency */
+#ifdef SOC_ATMEL_SAM_MCK_FREQ_HZ
 	div = SOC_ATMEL_SAM_MCK_FREQ_HZ / config->frequency;
+#else
+	/* SoCs without a fixed MCK rate (PIC32CZ CA70): ask the PMC. */
+	uint32_t mck_hz;
+	int ret = clock_control_get_rate(SAM_DT_PMC_CONTROLLER,
+					 (clock_control_subsys_t)&cfg->clock_cfg, &mck_hz);
+
+	if (ret < 0) {
+		return ret;
+	}
+	div = mck_hz / config->frequency;
+#endif
 	div = CLAMP(div, 1, UINT8_MAX);
 	spi_csr |= SPI_CSR_SCBR(div);
 
-	regs->SPI_CR = SPI_CR_SPIDIS; /* Disable SPI */
+	regs->SPI_CR = SAM_SPI_CR_SPIDIS; /* Disable SPI */
 	regs->SPI_MR = spi_mr;
 	regs->SPI_CSR[spi_csr_idx] = spi_csr;
-	regs->SPI_CR = SPI_CR_SPIEN; /* Enable SPI */
+	regs->SPI_CR = SAM_SPI_CR_SPIEN; /* Enable SPI */
 
 	data->ctx.config = config;
 
@@ -162,12 +205,12 @@ static int spi_sam_configure(const struct device *dev,
 }
 
 /* Finish any ongoing writes and drop any remaining read data */
-static void spi_sam_finish(Spi *regs)
+static void spi_sam_finish(sam_spi_regs_t *regs)
 {
-	while ((regs->SPI_SR & SPI_SR_TXEMPTY) == 0) {
+	while ((regs->SPI_SR & SAM_SPI_SR_TXEMPTY) == 0) {
 	}
 
-	while (regs->SPI_SR & SPI_SR_RDRF) {
+	while (regs->SPI_SR & SAM_SPI_SR_RDRF) {
 		(void)regs->SPI_RDR;
 	}
 }
@@ -181,7 +224,7 @@ static inline bool spi_sam_is_wide(const struct device *dev)
 }
 
 /* Fast path that transmits a buf (8-bit words) */
-static void spi_sam_fast_tx_8(Spi *regs, const uint8_t *tx_buf,
+static void spi_sam_fast_tx_8(sam_spi_regs_t *regs, const uint8_t *tx_buf,
 			      const uint32_t tx_buf_len)
 {
 	const uint8_t *p = tx_buf;
@@ -191,7 +234,7 @@ static void spi_sam_fast_tx_8(Spi *regs, const uint8_t *tx_buf,
 	while (p != pend) {
 		ch = *p++;
 
-		while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 		}
 
 		regs->SPI_TDR = SPI_TDR_TD(ch);
@@ -199,21 +242,21 @@ static void spi_sam_fast_tx_8(Spi *regs, const uint8_t *tx_buf,
 }
 
 /* Fast path that transmits a buf (9-16 bit words, packed as uint16_t) */
-static void spi_sam_fast_tx_16(Spi *regs, const uint8_t *tx_buf,
+static void spi_sam_fast_tx_16(sam_spi_regs_t *regs, const uint8_t *tx_buf,
 			       const uint32_t tx_buf_len)
 {
 	const uint16_t *p = (const uint16_t *)tx_buf;
 	size_t words = tx_buf_len / 2;
 
 	for (size_t i = 0; i < words; i++) {
-		while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 		}
 		regs->SPI_TDR = SPI_TDR_TD(p[i]);
 	}
 }
 
 /* Fast path that transmits a buf */
-static void spi_sam_fast_tx(const struct device *dev, Spi *regs,
+static void spi_sam_fast_tx(const struct device *dev, sam_spi_regs_t *regs,
 			    const uint8_t *tx_buf, const uint32_t tx_buf_len)
 {
 	if (spi_sam_is_wide(dev)) {
@@ -224,7 +267,7 @@ static void spi_sam_fast_tx(const struct device *dev, Spi *regs,
 }
 
 /* Fast path that reads into a buf (8-bit words) */
-static void spi_sam_fast_rx_8(Spi *regs, uint8_t *rx_buf,
+static void spi_sam_fast_rx_8(sam_spi_regs_t *regs, uint8_t *rx_buf,
 			      const uint32_t rx_buf_len)
 {
 	uint8_t *rx = rx_buf;
@@ -239,11 +282,11 @@ static void spi_sam_fast_rx_8(Spi *regs, uint8_t *rx_buf,
 	len--;
 
 	while (len) {
-		while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 		}
 
 		/* Read byte N+0 from the receive register */
-		while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 		}
 
 		*rx = (uint8_t)regs->SPI_RDR;
@@ -255,31 +298,31 @@ static void spi_sam_fast_rx_8(Spi *regs, uint8_t *rx_buf,
 	}
 
 	/* Read the final incoming byte */
-	while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+	while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 	}
 
 	*rx = (uint8_t)regs->SPI_RDR;
 }
 
 /* Fast path that reads into a buf (9-16 bit words, packed as uint16_t) */
-static void spi_sam_fast_rx_16(Spi *regs, uint8_t *rx_buf,
+static void spi_sam_fast_rx_16(sam_spi_regs_t *regs, uint8_t *rx_buf,
 			       const uint32_t rx_buf_len)
 {
 	uint16_t *rx = (uint16_t *)rx_buf;
 	size_t words = rx_buf_len / 2;
 
 	for (size_t i = 0; i < words; i++) {
-		while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 		}
 		regs->SPI_TDR = SPI_TDR_TD(0);
-		while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 		}
 		rx[i] = (uint16_t)regs->SPI_RDR;
 	}
 }
 
 /* Fast path that reads into a buf */
-static void spi_sam_fast_rx(const struct device *dev, Spi *regs,
+static void spi_sam_fast_rx(const struct device *dev, sam_spi_regs_t *regs,
 			    uint8_t *rx_buf, const uint32_t rx_buf_len)
 {
 	if (spi_sam_is_wide(dev)) {
@@ -290,7 +333,7 @@ static void spi_sam_fast_rx(const struct device *dev, Spi *regs,
 }
 
 /* Fast path that writes and reads bufs of the same length (8-bit words) */
-static void spi_sam_fast_txrx_8(Spi *regs,
+static void spi_sam_fast_txrx_8(sam_spi_regs_t *regs,
 				const uint8_t *tx_buf,
 				const uint8_t *rx_buf,
 				const uint32_t len)
@@ -319,7 +362,7 @@ static void spi_sam_fast_txrx_8(Spi *regs,
 	regs->SPI_TDR = SPI_TDR_TD(*tx++);
 
 	while (tx != txend) {
-		while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 		}
 
 		/* Load byte N+1 into the transmit register.  TX is
@@ -329,14 +372,14 @@ static void spi_sam_fast_txrx_8(Spi *regs,
 		regs->SPI_TDR = SPI_TDR_TD(*tx++);
 
 		/* Read byte N+0 from the receive register */
-		while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 		}
 
 		*rx++ = (uint8_t)regs->SPI_RDR;
 	}
 
 	/* Read the final incoming byte */
-	while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+	while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 	}
 
 	*rx = (uint8_t)regs->SPI_RDR;
@@ -344,7 +387,7 @@ static void spi_sam_fast_txrx_8(Spi *regs,
 }
 
 /* Fast path that writes and reads bufs of the same length (9-16 bit words) */
-static void spi_sam_fast_txrx_16(Spi *regs, const uint8_t *tx_buf,
+static void spi_sam_fast_txrx_16(sam_spi_regs_t *regs, const uint8_t *tx_buf,
 				 const uint8_t *rx_buf, const uint32_t len)
 {
 	const uint16_t *tx = (const uint16_t *)tx_buf;
@@ -352,17 +395,17 @@ static void spi_sam_fast_txrx_16(Spi *regs, const uint8_t *tx_buf,
 	size_t words = len / 2;
 
 	for (size_t i = 0; i < words; i++) {
-		while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 		}
 		regs->SPI_TDR = SPI_TDR_TD(tx[i]);
-		while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+		while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 		}
 		rx[i] = (uint16_t)regs->SPI_RDR;
 	}
 }
 
 /* Fast path that writes and reads bufs of the same length */
-static void spi_sam_fast_txrx(const struct device *dev, Spi *regs,
+static void spi_sam_fast_txrx(const struct device *dev, sam_spi_regs_t *regs,
 			      const uint8_t *tx_buf, const uint8_t *rx_buf,
 			      const uint32_t len)
 {
@@ -407,7 +450,7 @@ static void dma_callback(const struct device *dma_dev, void *user_data,
 
 /* DMA transceive path */
 static int spi_sam_dma_txrx(const struct device *dev,
-			    Spi *regs,
+			    sam_spi_regs_t *regs,
 			    const uint8_t *tx_buf,
 			    const uint8_t *rx_buf,
 			    const uint32_t len)
@@ -530,7 +573,7 @@ out:
 
 
 static inline int spi_sam_rx(const struct device *dev,
-			      Spi *regs,
+			      sam_spi_regs_t *regs,
 			      uint8_t *rx_buf,
 			      uint32_t rx_buf_len)
 {
@@ -558,7 +601,7 @@ static inline int spi_sam_rx(const struct device *dev,
 }
 
 static inline int spi_sam_tx(const struct device *dev,
-			     Spi *regs,
+			     sam_spi_regs_t *regs,
 			     const uint8_t *tx_buf,
 			     uint32_t tx_buf_len)
 {
@@ -586,7 +629,7 @@ static inline int spi_sam_tx(const struct device *dev,
 
 
 static inline int spi_sam_txrx(const struct device *dev,
-				Spi *regs,
+				sam_spi_regs_t *regs,
 				const uint8_t *tx_buf,
 				const uint8_t *rx_buf,
 				uint32_t buf_len)
@@ -624,7 +667,7 @@ static void spi_sam_fast_transceive(const struct device *dev,
 	const struct spi_sam_config *cfg = dev->config;
 	size_t tx_count = 0;
 	size_t rx_count = 0;
-	Spi *regs = cfg->regs;
+	sam_spi_regs_t *regs = cfg->regs;
 	const struct spi_buf *tx = NULL;
 	const struct spi_buf *rx = NULL;
 
@@ -671,7 +714,7 @@ static bool spi_sam_transfer_ongoing(struct spi_sam_data *data)
 	return spi_context_tx_on(&data->ctx) || spi_context_rx_on(&data->ctx);
 }
 
-static void spi_sam_shift_controller(Spi *regs, struct spi_sam_data *data)
+static void spi_sam_shift_controller(sam_spi_regs_t *regs, struct spi_sam_data *data)
 {
 	uint8_t tx;
 	uint8_t rx;
@@ -682,13 +725,13 @@ static void spi_sam_shift_controller(Spi *regs, struct spi_sam_data *data)
 		tx = 0U;
 	}
 
-	while ((regs->SPI_SR & SPI_SR_TDRE) == 0) {
+	while ((regs->SPI_SR & SAM_SPI_SR_TDRE) == 0) {
 	}
 
 	regs->SPI_TDR = SPI_TDR_TD(tx);
 	spi_context_update_tx(&data->ctx, 1, 1);
 
-	while ((regs->SPI_SR & SPI_SR_RDRF) == 0) {
+	while ((regs->SPI_SR & SAM_SPI_SR_RDRF) == 0) {
 	}
 
 	rx = (uint8_t)regs->SPI_RDR;
@@ -963,7 +1006,7 @@ static DEVICE_API(spi, spi_sam_driver_api) = {
 
 #define SPI_SAM_DEFINE_CONFIG(n)								\
 	static const struct spi_sam_config spi_sam_config_##n = {				\
-		.regs = (Spi *)DT_INST_REG_ADDR(n),						\
+		.regs = (sam_spi_regs_t *)DT_INST_REG_ADDR(n),					\
 		.clock_cfg = SAM_DT_INST_CLOCK_PMC_CFG(n),					\
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),					\
 		.loopback = DT_INST_PROP(n, loopback),						\
