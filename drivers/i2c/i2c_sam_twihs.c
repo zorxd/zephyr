@@ -68,6 +68,7 @@ struct i2c_sam_twihs_dev_data {
 	struct k_sem lock;
 	struct k_sem sem;
 	struct twihs_msg msg;
+	uint32_t dev_config;
 };
 
 static int i2c_clk_set(Twihs *const twihs, uint32_t speed)
@@ -148,11 +149,22 @@ static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
 	/* Enable Controller Mode */
 	twihs->TWIHS_CR = TWIHS_CR_MSEN;
 
+	dev_data->dev_config = config;
+
 	ret = 0;
 unlock:
 	k_sem_give(&dev_data->lock);
 
 	return ret;
+}
+
+static int i2c_sam_twihs_get_config(const struct device *dev, uint32_t *config)
+{
+	struct i2c_sam_twihs_dev_data *const dev_data = dev->data;
+
+	*config = dev_data->dev_config;
+
+	return 0;
 }
 
 static void write_msg_start(Twihs *const twihs, struct twihs_msg *msg,
@@ -352,6 +364,7 @@ static int i2c_sam_twihs_initialize(const struct device *dev)
 
 static DEVICE_API(i2c, i2c_sam_twihs_driver_api) = {
 	.configure = i2c_sam_twihs_configure,
+	.get_config = i2c_sam_twihs_get_config,
 	.transfer = i2c_sam_twihs_transfer,
 };
 
