@@ -43,6 +43,15 @@ overlay:
            status = "okay";
    };
 
+USART0 can be used on the mikroBUS socket J803 (pin 3 RX on PB0, pin 4 TX on
+PB1). Like UART4, it is described but disabled by default:
+
+.. code-block:: devicetree
+
+   &usart0 {
+           status = "okay";
+   };
+
 SPI0 (PD20 MISO, PD21 MOSI, PD22 SCK) goes to the Arduino and mikroBUS
 headers. Its XDMAC channels 1 (TX) and 2 (RX) are described; they are used
 when :kconfig:option:`CONFIG_SPI_SAM_DMA` is enabled.

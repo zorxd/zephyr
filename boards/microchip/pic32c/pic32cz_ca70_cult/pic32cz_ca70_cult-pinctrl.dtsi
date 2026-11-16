@@ -60,6 +60,15 @@
 		};
 	};
 
+	/* USART0 on the mikroBUS socket J803 (pin 3 RX, pin 4 TX) */
+	usart0_default: usart0_default {
+		group1 {
+			pinmux = <PB0C_USART0_RXD0>,
+				 <PB1C_USART0_TXD0>;
+			bias-pull-up;
+		};
+	};
+
 	/* UART4 on J402 (pin 1 RX, pin 2 TX) */
 	uart4_default: uart4_default {
 		group1 {
