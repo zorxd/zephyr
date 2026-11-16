@@ -205,3 +205,10 @@
 &xdmac {
 	status = "okay";
 };
+
+/* USART0 on the mikroBUS socket; the pins are free for other uses unless USART0 is enabled. */
+&usart0 {
+	current-speed = <115200>;
+	pinctrl-0 = <&usart0_default>;
+	pinctrl-names = "default";
+};
