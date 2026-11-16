@@ -16,6 +16,7 @@
 	chosen {
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
+		zephyr,flash-controller = &eefc;
 		zephyr,console = &uart1;
 		zephyr,shell-uart = &uart1;
 		zephyr,entropy = &trng;
@@ -57,6 +58,21 @@
 			gpios = <&pioa 9 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 			label = "SW1";
 			zephyr,code = <INPUT_KEY_1>;
+		};
+	};
+};
+
+&flash0 {
+	partitions {
+		ranges;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* 64 KB for storage partition, at the end of the flash */
+		storage_partition: partition@1f0000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x001f0000 DT_SIZE_K(64)>;
+			label = "storage";
 		};
 	};
 };
