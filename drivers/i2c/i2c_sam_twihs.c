@@ -164,7 +164,7 @@ static void write_msg_start(Twihs *const twihs, struct twihs_msg *msg,
 	if (msg->len == 0U) {
 		/* Address-only write, for example to probe a target */
 		twihs->TWIHS_CR = TWIHS_CR_QUICK_Msk;
-		twihs->TWIHS_IER = TWIHS_IER_TXCOMP | TWIHS_IER_NACK;
+		twihs->TWIHS_IER = TWIHS_IER_TXCOMP | TWIHS_IER_NACK | TWIHS_IER_ARBLST_Msk;
 		return;
 	}
 
@@ -172,7 +172,8 @@ static void write_msg_start(Twihs *const twihs, struct twihs_msg *msg,
 	twihs->TWIHS_THR = msg->buf[msg->idx++];
 
 	/* Enable Transmit Ready and Transmission Completed interrupts */
-	twihs->TWIHS_IER = TWIHS_IER_TXRDY | TWIHS_IER_TXCOMP | TWIHS_IER_NACK;
+	twihs->TWIHS_IER = TWIHS_IER_TXRDY | TWIHS_IER_TXCOMP | TWIHS_IER_NACK |
+			   TWIHS_IER_ARBLST_Msk;
 }
 
 static void read_msg_start(Twihs *const twihs, struct twihs_msg *msg,
@@ -190,7 +191,8 @@ static void read_msg_start(Twihs *const twihs, struct twihs_msg *msg,
 	twihs->TWIHS_CR = TWIHS_CR_START | twihs_cr_stop;
 
 	/* Enable Receive Ready and Transmission Completed interrupts */
-	twihs->TWIHS_IER = TWIHS_IER_RXRDY | TWIHS_IER_TXCOMP | TWIHS_IER_NACK;
+	twihs->TWIHS_IER = TWIHS_IER_RXRDY | TWIHS_IER_TXCOMP | TWIHS_IER_NACK |
+			   TWIHS_IER_ARBLST_Msk;
 }
 
 static int i2c_sam_twihs_transfer(const struct device *dev,
@@ -256,8 +258,8 @@ static void i2c_sam_twihs_isr(const struct device *dev)
 	/* Retrieve interrupt status */
 	isr_status = twihs->TWIHS_SR & twihs->TWIHS_IMR;
 
-	/* Not Acknowledged */
-	if (isr_status & TWIHS_SR_NACK) {
+	/* Not Acknowledged or Arbitration Lost */
+	if ((isr_status & (TWIHS_SR_NACK | TWIHS_SR_ARBLST_Msk)) != 0U) {
 		msg->twihs_sr = isr_status;
 		goto tx_comp;
 	}
