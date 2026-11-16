@@ -93,6 +93,14 @@
 			status = "disabled";
 		};
 
+		trng: rng@40070000 {
+			compatible = "microchip,trng-g2-entropy";
+			reg = <0x40070000 0x100>;
+			interrupts = <57 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 57>;
+			status = "disabled";
+		};
+
 		pmc: clock-controller@400e0600 {
 			compatible = "microchip,sam-pmc";
 			reg = <0x400e0600 0x200>;
