@@ -67,4 +67,13 @@
 				 <PD22B_SPI0_SPCK>;
 		};
 	};
+
+	/* USART0 on the mikroBUS socket J803 (pin 3 RX, pin 4 TX) */
+	usart0_default: usart0_default {
+		group1 {
+			pinmux = <PB0C_USART0_RXD0>,
+				 <PB1C_USART0_TXD0>;
+			bias-pull-up;
+		};
+	};
 };
