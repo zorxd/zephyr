@@ -33,6 +33,16 @@ Connections and IOs
 The console is on UART1 (PA5 RX, PA6 TX), connected to the on-board debugger
 virtual COM port, at 115200 baud.
 
+USART0 can be used on the mikroBUS socket J803 (pin 3 RX on PB0, pin 4 TX on
+PB1). Its pins and baud rate are described but it is disabled by default;
+enable it with an overlay:
+
+.. code-block:: devicetree
+
+   &usart0 {
+           status = "okay";
+   };
+
 SPI0 (PD20 MISO, PD21 MOSI, PD22 SCK) goes to the Arduino and mikroBUS
 headers. Its XDMAC channels 1 (TX) and 2 (RX) are described; they are used
 when :kconfig:option:`CONFIG_SPI_SAM_DMA` is enabled.
