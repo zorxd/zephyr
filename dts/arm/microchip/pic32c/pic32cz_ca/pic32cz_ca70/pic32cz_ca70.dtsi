@@ -8,6 +8,7 @@
 #include <mem.h>
 #include <zephyr/dt-bindings/clock/microchip_sam_pmc.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 
 / {
 	cpus {
@@ -40,6 +41,39 @@
 		sram0: memory@20400000 {
 			compatible = "mmio-sram";
 			reg = <0x20400000 DT_SIZE_K(512)>;
+		};
+
+		twihs0: i2c@40018000 {
+			compatible = "atmel,sam-i2c-twihs";
+			reg = <0x40018000 0x100>;
+			interrupts = <19 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 19>;
+			clock-frequency = <I2C_BITRATE_STANDARD>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		twihs1: i2c@4001c000 {
+			compatible = "atmel,sam-i2c-twihs";
+			reg = <0x4001c000 0x100>;
+			interrupts = <20 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 20>;
+			clock-frequency = <I2C_BITRATE_STANDARD>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		twihs2: i2c@40060000 {
+			compatible = "atmel,sam-i2c-twihs";
+			reg = <0x40060000 0x100>;
+			interrupts = <41 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 41>;
+			clock-frequency = <I2C_BITRATE_STANDARD>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
 		};
 
 		pmc: clock-controller@400e0600 {
