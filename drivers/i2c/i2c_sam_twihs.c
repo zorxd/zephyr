@@ -39,6 +39,8 @@ LOG_MODULE_REGISTER(i2c_sam_twihs);
 #define BUS_SPEED_HIGH_HZ            3400000U
 /* Maximum value of Clock Divider (CKDIV) */
 #define CKDIV_MAX                          7
+/* Message time budget [ms]: a fixed margin plus one millisecond per byte */
+#define MSG_TIMEOUT_BASE_MS              100U
 
 /* Device constant configuration parameters */
 struct i2c_sam_twihs_dev_cfg {
@@ -103,10 +105,10 @@ static int i2c_clk_set(Twihs *const twihs, uint32_t speed)
 	return 0;
 }
 
-static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
+/* Called with the bus locked */
+static int i2c_sam_twihs_apply_config(const struct device *dev, uint32_t config)
 {
 	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
-	struct i2c_sam_twihs_dev_data *const dev_data = dev->data;
 	Twihs *const twihs = dev_cfg->regs;
 	uint32_t bitrate;
 	int ret;
@@ -135,12 +137,10 @@ static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
 		return -EIO;
 	}
 
-	k_sem_take(&dev_data->lock, K_FOREVER);
-
 	/* Setup clock waveform */
 	ret = i2c_clk_set(twihs, bitrate);
 	if (ret < 0) {
-		goto unlock;
+		return ret;
 	}
 
 	/* Disable Target Mode */
@@ -149,10 +149,21 @@ static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
 	/* Enable Controller Mode */
 	twihs->TWIHS_CR = TWIHS_CR_MSEN;
 
-	dev_data->dev_config = config;
+	return 0;
+}
 
-	ret = 0;
-unlock:
+static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
+{
+	struct i2c_sam_twihs_dev_data *const dev_data = dev->data;
+	int ret;
+
+	k_sem_take(&dev_data->lock, K_FOREVER);
+
+	ret = i2c_sam_twihs_apply_config(dev, config);
+	if (ret == 0) {
+		dev_data->dev_config = config;
+	}
+
 	k_sem_give(&dev_data->lock);
 
 	return ret;
@@ -238,13 +249,22 @@ static int i2c_sam_twihs_transfer(const struct device *dev,
 		dev_data->msg.idx = 0U;
 		dev_data->msg.twihs_sr = 0U;
 		dev_data->msg.flags = msgs[i].flags;
+		k_sem_reset(&dev_data->sem);
 		if ((msgs[i].flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) {
 			read_msg_start(twihs, &dev_data->msg, addr);
 		} else {
 			write_msg_start(twihs, &dev_data->msg, addr);
 		}
 		/* Wait for the transfer to complete */
-		k_sem_take(&dev_data->sem, K_FOREVER);
+		if (k_sem_take(&dev_data->sem, K_MSEC(MSG_TIMEOUT_BASE_MS + msgs[i].len)) != 0) {
+			LOG_ERR("Transfer timeout");
+			/* The bus state is unknown: reset and set up the controller again */
+			twihs->TWIHS_IDR = twihs->TWIHS_IMR;
+			twihs->TWIHS_CR = TWIHS_CR_SWRST;
+			(void)i2c_sam_twihs_apply_config(dev, dev_data->dev_config);
+			ret = -ETIMEDOUT;
+			goto unlock;
+		}
 
 		if (dev_data->msg.twihs_sr > 0) {
 			/* Something went wrong */
