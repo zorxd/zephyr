@@ -13,4 +13,12 @@
 			bias-pull-up;
 		};
 	};
+
+	/* TWIHS0 to the AT24MAC402 EEPROM and the extension headers */
+	twihs0_default: twihs0_default {
+		group1 {
+			pinmux = <PA3A_TWIHS0_TWD0>,
+				 <PA4A_TWIHS0_TWCK0>;
+		};
+	};
 };
