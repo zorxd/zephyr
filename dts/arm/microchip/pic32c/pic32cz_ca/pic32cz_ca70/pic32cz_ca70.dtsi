@@ -126,11 +126,13 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 			#erase-block-cells = <2>;
-			status = "disabled";
 
 			flash0: flash@400000 {
 				compatible = "atmel,sam-flash", "soc-nv-flash";
 				reg = <0x00400000 DT_SIZE_M(2)>;
+				ranges = <0x0 0x00400000 DT_SIZE_M(2)>;
+				#address-cells = <1>;
+				#size-cells = <1>;
 				write-block-size = <16>;
 				erase-block-size = <8192>;
 				erase-blocks = <&eefc 8 2048>, <&eefc 254 8192>;
