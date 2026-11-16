@@ -1,0 +1,25 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * Internal loopback, no wiring needed. The slowest SPI clock is MCK / 255
+ * (about 588 kHz with MCK at 150 MHz).
+ */
+&spi0 {
+	loopback;
+
+	slow@0 {
+		compatible = "test-spi-loopback-slow";
+		reg = <0>;
+		spi-max-frequency = <1000000>;
+	};
+
+	fast@0 {
+		compatible = "test-spi-loopback-fast";
+		reg = <0>;
+		spi-max-frequency = <12500000>;
+	};
+};
