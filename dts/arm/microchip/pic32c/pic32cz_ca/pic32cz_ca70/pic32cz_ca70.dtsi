@@ -7,6 +7,7 @@
 #include <arm/armv7-m.dtsi>
 #include <mem.h>
 #include <zephyr/dt-bindings/clock/microchip_sam_pmc.h>
+#include <zephyr/dt-bindings/dma/atmel_samx7x_dma.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/i2c/i2c.h>
 
@@ -79,6 +80,30 @@
 			status = "disabled";
 		};
 
+		usart0: serial@40024000 {
+			compatible = "atmel,sam-usart";
+			reg = <0x40024000 0x100>;
+			interrupts = <13 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 13>;
+			status = "disabled";
+		};
+
+		usart1: serial@40028000 {
+			compatible = "atmel,sam-usart";
+			reg = <0x40028000 0x100>;
+			interrupts = <14 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 14>;
+			status = "disabled";
+		};
+
+		usart2: serial@4002c000 {
+			compatible = "atmel,sam-usart";
+			reg = <0x4002c000 0x100>;
+			interrupts = <15 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 15>;
+			status = "disabled";
+		};
+
 		can0: can@40030000 {
 			compatible = "atmel,sam-can";
 			reg = <0x40030000 0x100>, <0x40088110 0x4>;
@@ -146,6 +171,15 @@
 			reg = <0x40070000 0x100>;
 			interrupts = <57 0>;
 			clocks = <&pmc PMC_TYPE_PERIPHERAL 57>;
+			status = "disabled";
+		};
+
+		xdmac: dma-controller@40078000 {
+			compatible = "atmel,sam-xdmac";
+			reg = <0x40078000 0x400>;
+			interrupts = <58 0>;
+			clocks = <&pmc PMC_TYPE_PERIPHERAL 58>;
+			#dma-cells = <2>;
 			status = "disabled";
 		};
 
