@@ -16,6 +16,19 @@
 #include <soc.h>
 #include "rtc_utils.h"
 
+/*
+ * The Atmel headers name the RTC register block Rtc and its single-bit masks
+ * after the bit; the Microchip headers (PIC32CZ CA70, SAMA7G5) use
+ * rtc_registers_t and a _Msk suffix.
+ */
+#ifdef RTC_REGS
+typedef rtc_registers_t rtc_sam_regs_t;
+#define RTC_SAM_BIT(bit) RTC_##bit##_Msk
+#else
+typedef Rtc rtc_sam_regs_t;
+#define RTC_SAM_BIT(bit) RTC_##bit
+#endif
+
 #define RTC_SAM_REG_GET_FIELD(value, field) \
 	((RTC_##field##_Msk & value) >> RTC_##field##_Pos)
 
@@ -35,7 +48,7 @@
 typedef void (*rtc_sam_irq_init_fn_ptr)(void);
 
 struct rtc_sam_config {
-	Rtc *regs;
+	rtc_sam_regs_t *regs;
 	uint16_t irq_num;
 	rtc_sam_irq_init_fn_ptr irq_init_fn_ptr;
 };
@@ -98,7 +111,7 @@ static int rtc_sam_set_time(const struct device *dev, const struct rtc_time *tim
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 	uint32_t timeout_ms = 1100;
 	k_spinlock_key_t key;
 
@@ -114,10 +127,10 @@ static int rtc_sam_set_time(const struct device *dev, const struct rtc_time *tim
 	rtc_sam_disable_wp();
 
 	/* Request update */
-	regs->RTC_CR = (RTC_CR_UPDTIM | RTC_CR_UPDCAL);
+	regs->RTC_CR = (RTC_SAM_BIT(CR_UPDTIM) | RTC_SAM_BIT(CR_UPDCAL));
 
 	/* Await update acknowledge */
-	while (!(regs->RTC_SR & RTC_SR_ACKUPD)) {
+	while (!(regs->RTC_SR & RTC_SAM_BIT(SR_ACKUPD))) {
 		if (timeout_ms == 0) {
 			regs->RTC_CR = 0;
 
@@ -132,7 +145,7 @@ static int rtc_sam_set_time(const struct device *dev, const struct rtc_time *tim
 		timeout_ms--;
 	}
 
-	regs->RTC_SCCR = RTC_SCCR_ACKCLR;
+	regs->RTC_SCCR = RTC_SAM_BIT(SCCR_ACKCLR);
 
 	regs->RTC_TIMR = rtc_sam_timr_from_tm(timeptr);
 	regs->RTC_CALR = rtc_sam_calr_from_tm(timeptr);
@@ -145,7 +158,7 @@ static int rtc_sam_set_time(const struct device *dev, const struct rtc_time *tim
 static int rtc_sam_get_time(const struct device *dev, struct rtc_time *timeptr)
 {
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	uint32_t timr0;
 	uint32_t calr0;
@@ -153,7 +166,7 @@ static int rtc_sam_get_time(const struct device *dev, struct rtc_time *timeptr)
 	uint32_t calr1;
 
 	/* Validate time and date */
-	if (regs->RTC_VER & (RTC_VER_NVTIM | RTC_VER_NVCAL)) {
+	if (regs->RTC_VER & (RTC_SAM_BIT(VER_NVTIM) | RTC_SAM_BIT(VER_NVCAL))) {
 		return -ENODATA;
 	}
 
@@ -191,7 +204,7 @@ static void rtc_sam_isr(const struct device *dev)
 #if defined(CONFIG_RTC_ALARM) || defined(CONFIG_RTC_UPDATE)
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	uint32_t sr = regs->RTC_SR;
 #else
@@ -199,8 +212,8 @@ static void rtc_sam_isr(const struct device *dev)
 #endif
 
 #ifdef CONFIG_RTC_ALARM
-	if (sr & RTC_SR_ALARM) {
-		regs->RTC_SCCR = RTC_SCCR_ALRCLR;
+	if (sr & RTC_SAM_BIT(SR_ALARM)) {
+		regs->RTC_SCCR = RTC_SAM_BIT(SCCR_ALRCLR);
 		if (data->alarm_callback != NULL) {
 			data->alarm_callback(dev, 0, data->alarm_user_data);
 		}
@@ -208,8 +221,8 @@ static void rtc_sam_isr(const struct device *dev)
 #endif /* CONFIG_RTC_ALARM */
 
 #ifdef CONFIG_RTC_UPDATE
-	if (sr & RTC_SR_SEC) {
-		regs->RTC_SCCR = RTC_SCCR_SECCLR;
+	if (sr & RTC_SAM_BIT(SR_SEC)) {
+		regs->RTC_SCCR = RTC_SAM_BIT(SCCR_SECCLR);
 		if (data->update_callback != NULL) {
 			data->update_callback(dev, data->update_user_data);
 		}
@@ -234,17 +247,17 @@ static uint32_t rtc_atmel_timalr_from_tm(const struct rtc_time *timeptr, uint32_
 	uint32_t timalr = 0;
 
 	if (mask & RTC_ALARM_TIME_MASK_SECOND) {
-		timalr |= RTC_TIMALR_SECEN;
+		timalr |= RTC_SAM_BIT(TIMALR_SECEN);
 		timalr |= RTC_TIMALR_SEC(bin2bcd(timeptr->tm_sec));
 	}
 
 	if (mask & RTC_ALARM_TIME_MASK_MINUTE) {
-		timalr |= RTC_TIMALR_MINEN;
+		timalr |= RTC_SAM_BIT(TIMALR_MINEN);
 		timalr |= RTC_TIMALR_MIN(bin2bcd(timeptr->tm_min));
 	}
 
 	if (mask & RTC_ALARM_TIME_MASK_HOUR) {
-		timalr |= RTC_TIMALR_HOUREN;
+		timalr |= RTC_SAM_BIT(TIMALR_HOUREN);
 		timalr |= RTC_TIMALR_HOUR(bin2bcd(timeptr->tm_hour));
 	}
 
@@ -256,12 +269,12 @@ static uint32_t rtc_atmel_calalr_from_tm(const struct rtc_time *timeptr, uint32_
 	uint32_t calalr = RTC_CALALR_MONTH(1) | RTC_CALALR_DATE(1);
 
 	if (mask & RTC_ALARM_TIME_MASK_MONTH) {
-		calalr |= RTC_CALALR_MTHEN;
+		calalr |= RTC_SAM_BIT(CALALR_MTHEN);
 		calalr |= RTC_CALALR_MONTH(bin2bcd(timeptr->tm_mon + 1));
 	}
 
 	if (mask & RTC_ALARM_TIME_MASK_MONTHDAY) {
-		calalr |= RTC_CALALR_DATEEN;
+		calalr |= RTC_SAM_BIT(CALALR_DATEEN);
 		calalr |= RTC_CALALR_DATE(bin2bcd(timeptr->tm_mday));
 	}
 
@@ -272,15 +285,15 @@ static uint32_t rtc_sam_alarm_mask_from_timalr(uint32_t timalr)
 {
 	uint32_t mask = 0;
 
-	if (timalr & RTC_TIMALR_SECEN) {
+	if (timalr & RTC_SAM_BIT(TIMALR_SECEN)) {
 		mask |= RTC_ALARM_TIME_MASK_SECOND;
 	}
 
-	if (timalr & RTC_TIMALR_MINEN) {
+	if (timalr & RTC_SAM_BIT(TIMALR_MINEN)) {
 		mask |= RTC_ALARM_TIME_MASK_MINUTE;
 	}
 
-	if (timalr & RTC_TIMALR_HOUREN) {
+	if (timalr & RTC_SAM_BIT(TIMALR_HOUREN)) {
 		mask |= RTC_ALARM_TIME_MASK_HOUR;
 	}
 
@@ -291,11 +304,11 @@ static uint32_t rtc_sam_alarm_mask_from_calalr(uint32_t calalr)
 {
 	uint32_t mask = 0;
 
-	if (calalr & RTC_CALALR_MTHEN) {
+	if (calalr & RTC_SAM_BIT(CALALR_MTHEN)) {
 		mask |= RTC_ALARM_TIME_MASK_MONTH;
 	}
 
-	if (calalr & RTC_CALALR_DATEEN) {
+	if (calalr & RTC_SAM_BIT(CALALR_DATEEN)) {
 		mask |= RTC_ALARM_TIME_MASK_MONTHDAY;
 	}
 
@@ -343,7 +356,7 @@ static int rtc_sam_alarm_set_time(const struct device *dev, uint16_t id, uint16_
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	uint32_t timalr;
 	uint32_t calalr;
@@ -382,7 +395,7 @@ static int rtc_sam_alarm_set_time(const struct device *dev, uint16_t id, uint16_
 	rtc_sam_enable_wp();
 
 	/* Clear alarm pending status */
-	regs->RTC_SCCR = RTC_SCCR_ALRCLR;
+	regs->RTC_SCCR = RTC_SAM_BIT(SCCR_ALRCLR);
 
 	irq_enable(config->irq_num);
 	k_spin_unlock(&data->lock, key);
@@ -394,7 +407,7 @@ static int rtc_sam_alarm_get_time(const struct device *dev, uint16_t id, uint16_
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	uint32_t timalr;
 	uint32_t calalr;
@@ -421,7 +434,7 @@ static int rtc_sam_alarm_is_pending(const struct device *dev, uint16_t id)
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	if (id != 0) {
 		return -EINVAL;
@@ -429,13 +442,13 @@ static int rtc_sam_alarm_is_pending(const struct device *dev, uint16_t id)
 
 	k_spinlock_key_t key = k_spin_lock(&data->lock);
 
-	if ((regs->RTC_SR & RTC_SR_ALARM) == 0) {
+	if ((regs->RTC_SR & RTC_SAM_BIT(SR_ALARM)) == 0) {
 		k_spin_unlock(&data->lock, key);
 
 		return 0;
 	}
 
-	regs->RTC_SCCR = RTC_SCCR_ALRCLR;
+	regs->RTC_SCCR = RTC_SAM_BIT(SCCR_ALRCLR);
 	k_spin_unlock(&data->lock, key);
 	return 1;
 }
@@ -445,7 +458,7 @@ static int rtc_sam_alarm_set_callback(const struct device *dev, uint16_t id,
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	if (id != 0) {
 		return -EINVAL;
@@ -458,9 +471,9 @@ static int rtc_sam_alarm_set_callback(const struct device *dev, uint16_t id,
 	data->alarm_user_data = user_data;
 
 	if (data->alarm_callback) {
-		regs->RTC_IER = RTC_IER_ALREN;
+		regs->RTC_IER = RTC_SAM_BIT(IER_ALREN);
 	} else {
-		regs->RTC_IDR = RTC_IDR_ALRDIS;
+		regs->RTC_IDR = RTC_SAM_BIT(IDR_ALRDIS);
 	}
 
 	irq_enable(config->irq_num);
@@ -475,7 +488,7 @@ static int rtc_sam_update_set_callback(const struct device *dev, rtc_update_call
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	k_spinlock_key_t key = k_spin_lock(&data->lock);
 
@@ -485,9 +498,9 @@ static int rtc_sam_update_set_callback(const struct device *dev, rtc_update_call
 	data->update_user_data = user_data;
 
 	if (data->update_callback) {
-		regs->RTC_IER = RTC_IER_SECEN;
+		regs->RTC_IER = RTC_SAM_BIT(IER_SECEN);
 	} else {
-		regs->RTC_IDR = RTC_IDR_SECDIS;
+		regs->RTC_IDR = RTC_SAM_BIT(IDR_SECDIS);
 	}
 
 	irq_enable(config->irq_num);
@@ -503,7 +516,7 @@ static int rtc_sam_set_calibration(const struct device *dev, int32_t calibration
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 	bool negative_calibration;
 	bool high_calibration;
 	uint32_t slow_clock_calibration;
@@ -564,18 +577,18 @@ static int rtc_sam_set_calibration(const struct device *dev, int32_t calibration
 	mr = regs->RTC_MR;
 
 	if (negative_calibration == true) {
-		mr |= RTC_MR_NEGPPM;
+		mr |= RTC_SAM_BIT(MR_NEGPPM);
 	} else {
-		mr &= ~RTC_MR_NEGPPM;
+		mr &= ~RTC_SAM_BIT(MR_NEGPPM);
 	}
 
 	mr &= ~RTC_MR_CORRECTION_Msk;
 	mr |= RTC_MR_CORRECTION(slow_clock_calibration);
 
 	if (high_calibration == true) {
-		mr |= RTC_MR_HIGHPPM;
+		mr |= RTC_SAM_BIT(MR_HIGHPPM);
 	} else {
-		mr &= ~RTC_MR_HIGHPPM;
+		mr &= ~RTC_SAM_BIT(MR_HIGHPPM);
 	}
 
 	regs->RTC_MR = mr;
@@ -590,7 +603,7 @@ static int rtc_sam_set_calibration(const struct device *dev, int32_t calibration
 static int rtc_sam_get_calibration(const struct device *dev, int32_t *calibration)
 {
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	uint32_t mr;
 	int32_t correction;
@@ -606,13 +619,13 @@ static int rtc_sam_get_calibration(const struct device *dev, int32_t *calibratio
 	/* Formula documented in rtc_sam_set_calibration() */
 	if (correction == 0) {
 		*calibration = 0;
-	} else if (mr & RTC_MR_HIGHPPM) {
+	} else if (mr & RTC_SAM_BIT(MR_HIGHPPM)) {
 		*calibration = 3906000 / (correction + 1);
 	} else {
 		*calibration = 3906000 / ((correction + 1) * 20);
 	}
 
-	if (mr & RTC_MR_NEGPPM) {
+	if (mr & RTC_SAM_BIT(MR_NEGPPM)) {
 		*calibration = -*calibration;
 	}
 
@@ -643,22 +656,19 @@ static int rtc_sam_init(const struct device *dev)
 {
 	struct rtc_sam_data *data = dev->data;
 	const struct rtc_sam_config *config = dev->config;
-	Rtc *regs = config->regs;
+	rtc_sam_regs_t *regs = config->regs;
 
 	rtc_sam_disable_wp();
 #ifdef RTC_MR_PERSIAN
-	regs->RTC_MR &= ~(RTC_MR_HRMOD | RTC_MR_PERSIAN);
+	regs->RTC_MR &= ~(RTC_SAM_BIT(MR_HRMOD) | RTC_SAM_BIT(MR_PERSIAN));
 #else
-	regs->RTC_MR &= ~RTC_MR_HRMOD;
+	regs->RTC_MR &= ~RTC_SAM_BIT(MR_HRMOD);
 #endif
 	regs->RTC_CR = 0;
 	rtc_sam_enable_wp();
-	regs->RTC_IDR = (RTC_IDR_ACKDIS
-			       | RTC_IDR_ALRDIS
-			       | RTC_IDR_SECDIS
-			       | RTC_IDR_TIMDIS
-			       | RTC_IDR_CALDIS
-			       | RTC_IDR_TDERRDIS);
+	regs->RTC_IDR =
+		(RTC_SAM_BIT(IDR_ACKDIS) | RTC_SAM_BIT(IDR_ALRDIS) | RTC_SAM_BIT(IDR_SECDIS) |
+		 RTC_SAM_BIT(IDR_TIMDIS) | RTC_SAM_BIT(IDR_CALDIS) | RTC_SAM_BIT(IDR_TDERRDIS));
 
 	k_sem_init(&data->cr_sec_evt_sem, 0, 1);
 	config->irq_init_fn_ptr();
@@ -674,7 +684,7 @@ static int rtc_sam_init(const struct device *dev)
 	}								\
 									\
 	static const struct rtc_sam_config rtc_sam_config_##id = {	\
-		.regs = (Rtc *)DT_INST_REG_ADDR(id),			\
+		.regs = (rtc_sam_regs_t *)DT_INST_REG_ADDR(id),		\
 		.irq_num = DT_INST_IRQN(id),				\
 		.irq_init_fn_ptr = rtc_sam_irq_init_##id,		\
 	};								\
