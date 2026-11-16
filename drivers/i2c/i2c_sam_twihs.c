@@ -161,6 +161,13 @@ static void write_msg_start(Twihs *const twihs, struct twihs_msg *msg,
 	/* Set target address. */
 	twihs->TWIHS_MMR = TWIHS_MMR_DADR(daddr);
 
+	if (msg->len == 0U) {
+		/* Address-only write, for example to probe a target */
+		twihs->TWIHS_CR = TWIHS_CR_QUICK_Msk;
+		twihs->TWIHS_IER = TWIHS_IER_TXCOMP | TWIHS_IER_NACK;
+		return;
+	}
+
 	/* Write first data byte on I2C bus */
 	twihs->TWIHS_THR = msg->buf[msg->idx++];
 
@@ -196,6 +203,12 @@ static int i2c_sam_twihs_transfer(const struct device *dev,
 	int ret;
 
 	__ASSERT_NO_MSG(msgs);
+
+	for (uint8_t i = 0U; i < num_msgs; i++) {
+		if (((msgs[i].flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) && (msgs[i].len == 0U)) {
+			return -EINVAL;
+		}
+	}
 
 	k_sem_take(&dev_data->lock, K_FOREVER);
 
