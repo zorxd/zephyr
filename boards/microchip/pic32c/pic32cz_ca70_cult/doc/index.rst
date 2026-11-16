@@ -33,6 +33,10 @@ Connections and IOs
 The console is on UART1 (PA5 RX, PA6 TX), connected to the on-board debugger
 virtual COM port, at 115200 baud.
 
+SPI0 (PD20 MISO, PD21 MOSI, PD22 SCK) goes to the Arduino and mikroBUS
+headers. Its XDMAC channels 1 (TX) and 2 (RX) are described; they are used
+when :kconfig:option:`CONFIG_SPI_SAM_DMA` is enabled.
+
 The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 
