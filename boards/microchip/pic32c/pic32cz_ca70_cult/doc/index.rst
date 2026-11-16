@@ -33,6 +33,11 @@ Connections and IOs
 The console is on UART1 (PA5 RX, PA6 TX), connected to the on-board debugger
 virtual COM port, at 115200 baud.
 
+The AT24MAC402 EEPROM is on TWIHS0 (PA3 SDA, PA4 SCL): the 256-byte EEPROM at
+address 0x56 is the ``eeprom-0`` alias, and the read-only factory serial number
+and EUI-48 MAC address are at address 0x5e. Jumper J603 sets address bit A0;
+the devicetree describes the A0 low setting.
+
 The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 
