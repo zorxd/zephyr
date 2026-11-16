@@ -171,8 +171,11 @@ static int gpio_sam_port_set_masked_raw(const struct device *dev,
 {
 	const struct gpio_sam_config * const cfg = dev->config;
 	Pio * const pio = cfg->regs;
+	unsigned int key = irq_lock();
 
 	pio->PIO_ODSR = (pio->PIO_ODSR & ~mask) | (mask & value);
+
+	irq_unlock(key);
 
 	return 0;
 }
@@ -205,8 +208,12 @@ static int gpio_sam_port_toggle_bits(const struct device *dev, uint32_t mask)
 	const struct gpio_sam_config * const cfg = dev->config;
 	Pio * const pio = cfg->regs;
 
+	unsigned int key = irq_lock();
+
 	/* Toggle pins. */
 	pio->PIO_ODSR ^= mask;
+
+	irq_unlock(key);
 
 	return 0;
 }
