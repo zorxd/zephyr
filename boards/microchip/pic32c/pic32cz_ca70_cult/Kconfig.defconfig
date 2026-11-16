@@ -10,4 +10,16 @@ config EEPROM
 configdefault ETH_DRIVER
 	default y
 
+if SPI_NOR
+
+# The QSPI flash is erased in 4 KiB sectors only, see the devicetree.
+choice SPI_NOR_SFDP
+	default SPI_NOR_SFDP_DEVICETREE
+endchoice
+
+config SPI_NOR_FLASH_LAYOUT_PAGE_SIZE
+	default 4096
+
+endif # SPI_NOR
+
 endif # BOARD_PIC32CZ_CA70_CULT
