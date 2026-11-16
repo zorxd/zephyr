@@ -51,6 +51,8 @@ typedef Twihs sam_twihs_regs_t;
 #define CKDIV_MAX                          7
 /* Message time budget [ms]: a fixed margin plus one millisecond per byte */
 #define MSG_TIMEOUT_BASE_MS              100U
+/* Maximum number of internal address bytes (TWIHS_MMR.IADRSZ) */
+#define IADR_LEN_MAX                       3U
 
 /* Device constant configuration parameters */
 struct i2c_sam_twihs_dev_cfg {
@@ -224,13 +226,14 @@ static void write_msg_start(sam_twihs_regs_t *const twihs, struct twihs_msg *msg
 			   TWIHS_IER_ARBLST_Msk;
 }
 
-static void read_msg_start(sam_twihs_regs_t *const twihs, struct twihs_msg *msg,
-			   uint8_t daddr)
+static void read_msg_start(sam_twihs_regs_t *const twihs, struct twihs_msg *msg, uint8_t daddr,
+			   uint32_t iadr, uint8_t iadr_len)
 {
 	uint32_t twihs_cr_stop;
 
 	/* Set target address and number of internal address bytes */
-	twihs->TWIHS_MMR = TWIHS_MMR_MREAD_Msk | TWIHS_MMR_DADR(daddr);
+	twihs->TWIHS_MMR = TWIHS_MMR_MREAD_Msk | TWIHS_MMR_IADRSZ(iadr_len) | TWIHS_MMR_DADR(daddr);
+	twihs->TWIHS_IADR = TWIHS_IADR_IADR(iadr);
 
 	/* In single data byte read the START and STOP must both be set */
 	twihs_cr_stop = (msg->len == 1U) ? TWIHS_CR_STOP_Msk : 0;
@@ -241,6 +244,20 @@ static void read_msg_start(sam_twihs_regs_t *const twihs, struct twihs_msg *msg,
 	/* Enable Receive Ready and Transmission Completed interrupts */
 	twihs->TWIHS_IER = TWIHS_IER_RXRDY_Msk | TWIHS_IER_TXCOMP_Msk | TWIHS_IER_NACK_Msk |
 			   TWIHS_IER_ARBLST_Msk;
+}
+
+/*
+ * A write of up to three bytes followed by a read is sent as the internal
+ * address of the read, so that the controller generates the repeated START.
+ * A read started by software after a write is only reliable when issued
+ * while the last written byte is still being shifted out.
+ */
+static bool is_iadr_write(const struct i2c_msg *msgs, uint8_t num_msgs, uint8_t i)
+{
+	return ((i + 1U) < num_msgs) && ((msgs[i].flags & I2C_MSG_RW_MASK) == I2C_MSG_WRITE) &&
+	       ((msgs[i].flags & I2C_MSG_STOP) == 0U) && (msgs[i].len > 0U) &&
+	       (msgs[i].len <= IADR_LEN_MAX) &&
+	       ((msgs[i + 1U].flags & I2C_MSG_RW_MASK) == I2C_MSG_READ);
 }
 
 static int i2c_sam_twihs_transfer(const struct device *dev,
@@ -265,10 +282,18 @@ static int i2c_sam_twihs_transfer(const struct device *dev,
 	/* Clear pending interrupts, such as NACK. */
 	(void)twihs->TWIHS_SR;
 
-	/* Set number of internal address bytes to 0, not used. */
-	twihs->TWIHS_IADR = 0;
+	for (uint8_t i = 0U; i < num_msgs; i++) {
+		uint32_t iadr = 0U;
+		uint8_t iadr_len = 0U;
 
-	for (int i = 0; i < num_msgs; i++) {
+		if (is_iadr_write(msgs, num_msgs, i)) {
+			for (uint8_t j = 0U; j < msgs[i].len; j++) {
+				iadr = (iadr << 8) | msgs[i].buf[j];
+			}
+			iadr_len = (uint8_t)msgs[i].len;
+			i++;
+		}
+
 		dev_data->msg.buf = msgs[i].buf;
 		dev_data->msg.len = msgs[i].len;
 		dev_data->msg.idx = 0U;
@@ -276,12 +301,13 @@ static int i2c_sam_twihs_transfer(const struct device *dev,
 		dev_data->msg.flags = msgs[i].flags;
 		k_sem_reset(&dev_data->sem);
 		if ((msgs[i].flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) {
-			read_msg_start(twihs, &dev_data->msg, addr);
+			read_msg_start(twihs, &dev_data->msg, addr, iadr, iadr_len);
 		} else {
 			write_msg_start(twihs, &dev_data->msg, addr);
 		}
 		/* Wait for the transfer to complete */
-		if (k_sem_take(&dev_data->sem, K_MSEC(MSG_TIMEOUT_BASE_MS + msgs[i].len)) != 0) {
+		if (k_sem_take(&dev_data->sem,
+			       K_MSEC(MSG_TIMEOUT_BASE_MS + iadr_len + msgs[i].len)) != 0) {
 			LOG_ERR("Transfer timeout");
 			/* The bus state is unknown: reset and set up the controller again */
 			twihs->TWIHS_IDR = twihs->TWIHS_IMR;
