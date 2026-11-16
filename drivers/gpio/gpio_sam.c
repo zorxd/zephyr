@@ -226,6 +226,11 @@ static int gpio_sam_port_interrupt_configure(const struct device *dev,
 	const struct gpio_sam_config * const cfg = dev->config;
 	Pio * const pio = cfg->regs;
 
+	if ((mode == GPIO_INT_MODE_LEVEL) && (trig == GPIO_INT_TRIG_BOTH)) {
+		/* Both levels at once cannot be expressed. */
+		return -ENOTSUP;
+	}
+
 	/* Disable the interrupt. */
 	pio->PIO_IDR = mask;
 	/* Disable additional interrupt modes. */
