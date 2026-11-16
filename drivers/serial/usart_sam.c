@@ -21,6 +21,58 @@
 #include <zephyr/drivers/clock_control/atmel_sam_pmc.h>
 #include <zephyr/irq.h>
 
+/*
+ * The Atmel headers name the USART register block Usart and its USART mode
+ * fields without a mode prefix; the Microchip headers (PIC32CZ CA70) use
+ * usart_registers_t, a US_xx_USART_ prefix and a _Msk suffix on single bits.
+ */
+#ifdef USART0_REGS
+typedef usart_registers_t Usart;
+
+#define US_CR_RSTRX          US_CR_USART_RSTRX_Msk
+#define US_CR_RSTSTA         US_CR_USART_RSTSTA_Msk
+#define US_CR_RSTTX          US_CR_USART_RSTTX_Msk
+#define US_CR_RXDIS          US_CR_USART_RXDIS_Msk
+#define US_CR_RXEN           US_CR_USART_RXEN_Msk
+#define US_CR_TXDIS          US_CR_USART_TXDIS_Msk
+#define US_CR_TXEN           US_CR_USART_TXEN_Msk
+#define US_CSR_FRAME         US_CSR_USART_FRAME_Msk
+#define US_CSR_OVRE          US_CSR_USART_OVRE_Msk
+#define US_CSR_PARE          US_CSR_USART_PARE_Msk
+#define US_CSR_RXRDY         US_CSR_USART_RXRDY_Msk
+#define US_CSR_TXEMPTY       US_CSR_USART_TXEMPTY_Msk
+#define US_CSR_TXRDY         US_CSR_USART_TXRDY_Msk
+#define US_IDR_FRAME         US_IDR_USART_FRAME_Msk
+#define US_IDR_OVRE          US_IDR_USART_OVRE_Msk
+#define US_IDR_PARE          US_IDR_USART_PARE_Msk
+#define US_IDR_RXRDY         US_IDR_USART_RXRDY_Msk
+#define US_IDR_TXRDY         US_IDR_USART_TXRDY_Msk
+#define US_IER_FRAME         US_IER_USART_FRAME_Msk
+#define US_IER_OVRE          US_IER_USART_OVRE_Msk
+#define US_IER_PARE          US_IER_USART_PARE_Msk
+#define US_IER_RXRDY         US_IER_USART_RXRDY_Msk
+#define US_IER_TXRDY         US_IER_USART_TXRDY_Msk
+#define US_IMR_RXRDY         US_IMR_USART_RXRDY_Msk
+#define US_IMR_TXRDY         US_IMR_USART_TXRDY_Msk
+#define US_MR_CHMODE_NORMAL  US_MR_USART_CHMODE_NORMAL
+#define US_MR_CHRL_Msk       US_MR_USART_CHRL_Msk
+#define US_MR_CHRL_5_BIT     US_MR_USART_CHRL_5_BIT
+#define US_MR_CHRL_6_BIT     US_MR_USART_CHRL_6_BIT
+#define US_MR_CHRL_7_BIT     US_MR_USART_CHRL_7_BIT
+#define US_MR_CHRL_8_BIT     US_MR_USART_CHRL_8_BIT
+#define US_MR_NBSTOP_Msk     US_MR_USART_NBSTOP_Msk
+#define US_MR_NBSTOP_1_5_BIT US_MR_USART_NBSTOP_1_5_BIT
+#define US_MR_NBSTOP_1_BIT   US_MR_USART_NBSTOP_1_BIT
+#define US_MR_NBSTOP_2_BIT   US_MR_USART_NBSTOP_2_BIT
+#define US_MR_PAR_Msk        US_MR_USART_PAR_Msk
+#define US_MR_PAR_EVEN       US_MR_USART_PAR_EVEN
+#define US_MR_PAR_MARK       US_MR_USART_PAR_MARK
+#define US_MR_PAR_NO         US_MR_USART_PAR_NO
+#define US_MR_PAR_ODD        US_MR_USART_PAR_ODD
+#define US_MR_PAR_SPACE      US_MR_USART_PAR_SPACE
+#define US_MR_USCLKS_MCK     US_MR_USART_USCLKS_MCK
+#endif
+
 /* Device constant configuration parameters */
 struct usart_sam_dev_cfg {
 	Usart *regs;
