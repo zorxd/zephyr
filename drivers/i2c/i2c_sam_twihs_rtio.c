@@ -32,6 +32,16 @@ LOG_MODULE_REGISTER(i2c_sam_twihs_rtio);
 
 #include "i2c-priv.h"
 
+/*
+ * The Atmel headers name the TWIHS register block Twihs; the Microchip headers
+ * (PIC32CZ CA70) use twihs_registers_t.
+ */
+#ifdef TWIHS0_REGS
+typedef twihs_registers_t sam_twihs_regs_t;
+#else
+typedef Twihs sam_twihs_regs_t;
+#endif
+
 /** I2C bus speed [Hz] in Standard Mode */
 #define BUS_SPEED_STANDARD_HZ         100000U
 /** I2C bus speed [Hz] in Fast Mode */
@@ -43,7 +53,7 @@ LOG_MODULE_REGISTER(i2c_sam_twihs_rtio);
 
 /* Device constant configuration parameters */
 struct i2c_sam_twihs_dev_cfg {
-	Twihs *regs;
+	sam_twihs_regs_t *regs;
 	void (*irq_config)(void);
 	uint32_t bitrate;
 	const struct atmel_sam_pmc_config clock_cfg;
@@ -57,17 +67,32 @@ struct i2c_sam_twihs_dev_data {
 	uint32_t buf_idx;
 };
 
-static int i2c_clk_set(Twihs *const twihs, uint32_t speed)
+static int i2c_clk_set(const struct device *dev, uint32_t speed)
 {
+	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
+	sam_twihs_regs_t *const twihs = dev_cfg->regs;
 	uint32_t ck_div = 0U;
 	uint32_t cl_div;
+	uint32_t mck_hz;
 	bool div_completed = false;
+
+#ifdef SOC_ATMEL_SAM_MCK_FREQ_HZ
+	mck_hz = SOC_ATMEL_SAM_MCK_FREQ_HZ;
+#else
+	/* SoCs without a fixed MCK rate (PIC32CZ CA70): ask the PMC. */
+	int ret = clock_control_get_rate(SAM_DT_PMC_CONTROLLER,
+					 (clock_control_subsys_t)&dev_cfg->clock_cfg, &mck_hz);
+
+	if (ret < 0) {
+		return ret;
+	}
+#endif
 
 	/*  From the datasheet "TWIHS Clock Waveform Generator Register"
 	 *  T_low = ( ( CLDIV × 2^CKDIV ) + 3 ) × T_MCK
 	 */
 	while (!div_completed) {
-		cl_div =   ((SOC_ATMEL_SAM_MCK_FREQ_HZ / (speed * 2U)) - 3)
+		cl_div =   ((mck_hz / (speed * 2U)) - 3)
 			 / (1 << ck_div);
 
 		if (cl_div <= 255U) {
@@ -92,7 +117,7 @@ static int i2c_clk_set(Twihs *const twihs, uint32_t speed)
 static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
 {
 	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
-	Twihs *const twihs = dev_cfg->regs;
+	sam_twihs_regs_t *const twihs = dev_cfg->regs;
 	uint32_t bitrate;
 	int ret;
 
@@ -121,21 +146,21 @@ static int i2c_sam_twihs_configure(const struct device *dev, uint32_t config)
 	}
 
 	/* Setup clock waveform */
-	ret = i2c_clk_set(twihs, bitrate);
+	ret = i2c_clk_set(dev, bitrate);
 	if (ret < 0) {
 		return ret;
 	}
 
 	/* Disable Target Mode */
-	twihs->TWIHS_CR = TWIHS_CR_SVDIS;
+	twihs->TWIHS_CR = TWIHS_CR_SVDIS_Msk;
 
 	/* Enable Controller Mode */
-	twihs->TWIHS_CR = TWIHS_CR_MSEN;
+	twihs->TWIHS_CR = TWIHS_CR_MSEN_Msk;
 
 	return 0;
 }
 
-static void write_msg_start(Twihs *const twihs, const uint8_t *buf, const uint32_t idx,
+static void write_msg_start(sam_twihs_regs_t *const twihs, const uint8_t *buf, const uint32_t idx,
 			    const uint8_t daddr)
 {
 	/* Set target address. */
@@ -145,25 +170,25 @@ static void write_msg_start(Twihs *const twihs, const uint8_t *buf, const uint32
 	twihs->TWIHS_THR = buf[idx];
 
 	/* Enable Transmit Ready and Transmission Completed interrupts */
-	twihs->TWIHS_IER = TWIHS_IER_TXRDY | TWIHS_IER_TXCOMP | TWIHS_IER_NACK;
+	twihs->TWIHS_IER = TWIHS_IER_TXRDY_Msk | TWIHS_IER_TXCOMP_Msk | TWIHS_IER_NACK_Msk;
 
 }
 
-static void read_msg_start(Twihs *const twihs, const uint32_t len, const uint8_t daddr)
+static void read_msg_start(sam_twihs_regs_t *const twihs, const uint32_t len, const uint8_t daddr)
 {
 	uint32_t twihs_cr_stop;
 
 	/* Set target address and number of internal address bytes */
-	twihs->TWIHS_MMR = TWIHS_MMR_MREAD | TWIHS_MMR_DADR(daddr);
+	twihs->TWIHS_MMR = TWIHS_MMR_MREAD_Msk | TWIHS_MMR_DADR(daddr);
 
 	/* In single data byte read the START and STOP must both be set */
-	twihs_cr_stop = (len == 1U) ? TWIHS_CR_STOP : 0;
+	twihs_cr_stop = (len == 1U) ? TWIHS_CR_STOP_Msk : 0;
 
 	/* Start the transfer by sending START condition */
-	twihs->TWIHS_CR = TWIHS_CR_START | twihs_cr_stop;
+	twihs->TWIHS_CR = TWIHS_CR_START_Msk | twihs_cr_stop;
 
 	/* Enable Receive Ready and Transmission Completed interrupts */
-	twihs->TWIHS_IER = TWIHS_IER_RXRDY | TWIHS_IER_TXCOMP | TWIHS_IER_NACK;
+	twihs->TWIHS_IER = TWIHS_IER_RXRDY_Msk | TWIHS_IER_TXCOMP_Msk | TWIHS_IER_NACK_Msk;
 }
 
 static void i2c_sam_twihs_complete(const struct device *dev, int status);
@@ -172,7 +197,7 @@ static void i2c_sam_twihs_start(const struct device *dev)
 {
 	struct i2c_sam_twihs_dev_data *const dev_data = dev->data;
 	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
-	Twihs *const twihs = dev_cfg->regs;
+	sam_twihs_regs_t *const twihs = dev_cfg->regs;
 	struct rtio_sqe *sqe = &dev_data->ctx->txn_curr->sqe;
 	struct i2c_dt_spec *dt_spec = sqe->iodev->data;
 
@@ -202,7 +227,7 @@ static void i2c_sam_twihs_start(const struct device *dev)
 static void i2c_sam_twihs_complete(const struct device *dev, int status)
 {
 	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
-	Twihs *const twihs = dev_cfg->regs;
+	sam_twihs_regs_t *const twihs = dev_cfg->regs;
 	struct i2c_rtio *const ctx = ((struct i2c_sam_twihs_dev_data *)
 		dev->data)->ctx;
 
@@ -228,7 +253,7 @@ static void i2c_sam_twihs_isr(const struct device *dev)
 {
 	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
 	struct i2c_sam_twihs_dev_data *const dev_data = dev->data;
-	Twihs *const twihs = dev_cfg->regs;
+	sam_twihs_regs_t *const twihs = dev_cfg->regs;
 	struct rtio_sqe *sqe = &dev_data->ctx->txn_curr->sqe;
 	uint32_t isr_status;
 
@@ -236,30 +261,30 @@ static void i2c_sam_twihs_isr(const struct device *dev)
 	isr_status = twihs->TWIHS_SR & twihs->TWIHS_IMR;
 
 	/* Not Acknowledged */
-	if (isr_status & TWIHS_SR_NACK) {
+	if (isr_status & TWIHS_SR_NACK_Msk) {
 		i2c_sam_twihs_complete(dev, -EIO);
 		return;
 	}
 
 	/* Byte received */
-	if (isr_status & TWIHS_SR_RXRDY) {
+	if (isr_status & TWIHS_SR_RXRDY_Msk) {
 		sqe->rx.buf[dev_data->buf_idx] = twihs->TWIHS_RHR;
 		dev_data->buf_idx += 1;
 
 		if (dev_data->buf_idx == sqe->rx.buf_len - 1U) {
 			/* Send STOP condition */
-			twihs->TWIHS_CR = TWIHS_CR_STOP;
+			twihs->TWIHS_CR = TWIHS_CR_STOP_Msk;
 		}
 	}
 
 	/* Byte sent */
-	if (isr_status & TWIHS_SR_TXRDY) {
+	if (isr_status & TWIHS_SR_TXRDY_Msk) {
 		if (dev_data->buf_idx == sqe->tx.buf_len) {
 			if (sqe->iodev_flags & RTIO_IODEV_I2C_STOP) {
 				/* Send STOP condition */
-				twihs->TWIHS_CR = TWIHS_CR_STOP;
+				twihs->TWIHS_CR = TWIHS_CR_STOP_Msk;
 				/* Disable Transmit Ready interrupt */
-				twihs->TWIHS_IDR = TWIHS_IDR_TXRDY;
+				twihs->TWIHS_IDR = TWIHS_IDR_TXRDY_Msk;
 			} else {
 				/* Transmission completed */
 				i2c_sam_twihs_complete(dev, 0);
@@ -271,7 +296,7 @@ static void i2c_sam_twihs_isr(const struct device *dev)
 	}
 
 	/* Transmission completed */
-	if (isr_status & TWIHS_SR_TXCOMP) {
+	if (isr_status & TWIHS_SR_TXCOMP_Msk) {
 		i2c_sam_twihs_complete(dev, 0);
 	}
 }
@@ -289,7 +314,7 @@ static int i2c_sam_twihs_initialize(const struct device *dev)
 {
 	const struct i2c_sam_twihs_dev_cfg *const dev_cfg = dev->config;
 	struct i2c_sam_twihs_dev_data *const dev_data = dev->data;
-	Twihs *const twihs = dev_cfg->regs;
+	sam_twihs_regs_t *const twihs = dev_cfg->regs;
 	uint32_t bitrate_cfg;
 	int ret;
 
@@ -307,7 +332,7 @@ static int i2c_sam_twihs_initialize(const struct device *dev)
 			       (clock_control_subsys_t *)&dev_cfg->clock_cfg);
 
 	/* Reset the module */
-	twihs->TWIHS_CR = TWIHS_CR_SWRST;
+	twihs->TWIHS_CR = TWIHS_CR_SWRST_Msk;
 
 	bitrate_cfg = i2c_map_dt_bitrate(dev_cfg->bitrate);
 
@@ -347,7 +372,7 @@ static DEVICE_API(i2c, i2c_sam_twihs_driver_api) = {
 		    DT_INST_PROP_OR(n, cq_size, CONFIG_I2C_RTIO_CQ_SIZE));			\
 												\
 	static const struct i2c_sam_twihs_dev_cfg i2c##n##_sam_config = {			\
-		.regs = (Twihs *)DT_INST_REG_ADDR(n),						\
+		.regs = (sam_twihs_regs_t *)DT_INST_REG_ADDR(n),				\
 		.irq_config = i2c##n##_sam_irq_config,						\
 		.clock_cfg = SAM_DT_INST_CLOCK_PMC_CFG(n),					\
 		.irq_id = DT_INST_IRQN(n),							\
