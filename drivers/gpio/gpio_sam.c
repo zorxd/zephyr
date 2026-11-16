@@ -180,7 +180,9 @@ static int gpio_sam_port_set_masked_raw(const struct device *dev,
 	const struct gpio_sam_config * const cfg = dev->config;
 	sam_pio_regs_t *const pio = cfg->regs;
 
-	pio->PIO_ODSR = (pio->PIO_ODSR & ~mask) | (mask & value);
+	/* Change only the masked pins, without a read-modify-write of PIO_ODSR */
+	pio->PIO_SODR = mask & value;
+	pio->PIO_CODR = mask & ~value;
 
 	return 0;
 }
@@ -212,9 +214,11 @@ static int gpio_sam_port_toggle_bits(const struct device *dev, uint32_t mask)
 {
 	const struct gpio_sam_config * const cfg = dev->config;
 	sam_pio_regs_t *const pio = cfg->regs;
+	uint32_t set = ~pio->PIO_ODSR & mask;
 
-	/* Toggle pins. */
-	pio->PIO_ODSR ^= mask;
+	/* Toggle pins: change only the masked pins */
+	pio->PIO_SODR = set;
+	pio->PIO_CODR = mask & ~set;
 
 	return 0;
 }
