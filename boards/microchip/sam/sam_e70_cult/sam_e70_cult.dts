@@ -1,0 +1,246 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * PIC32CZ CA70 Curiosity Ultra described for the SAM E70 rev B SoC support:
+ * the PIC32CZ CA70 is SAM E70 rev B silicon.
+ */
+
+/dts-v1/;
+#include <atmel/same70x21b.dtsi>
+#include "sam_e70_cult-pinctrl.dtsi"
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	compatible = "microchip,sam_e70_cult", "atmel,same70q21b", "atmel,same70b";
+	model = "PIC32CZ CA70 Curiosity Ultra (SAM E70)";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,flash-controller = &eefc;
+		zephyr,console = &uart1;
+		zephyr,shell-uart = &uart1;
+		zephyr,entropy = &trng;
+		zephyr,canbus = &can0;
+	};
+
+	aliases {
+		led0 = &led0;
+		led1 = &led1;
+		sw0 = &button0;
+		sw1 = &button1;
+		i2c-0 = &twihs0;
+		eeprom-0 = &eeprom;
+		rtc = &rtc;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led0: led_0 {
+			gpios = <&piod 23 GPIO_ACTIVE_LOW>;
+			label = "USER LED0";
+		};
+
+		led1: led_1 {
+			gpios = <&piod 29 GPIO_ACTIVE_LOW>;
+			label = "USER LED1";
+		};
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+
+		button0: button_0 {
+			gpios = <&pioa 1 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "SW0";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+
+		button1: button_1 {
+			gpios = <&pioa 9 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "SW1";
+			zephyr,code = <INPUT_KEY_1>;
+		};
+	};
+};
+
+/* 12 MHz crystal, PLLA = 12 MHz * 25 = 300 MHz (SoC Kconfig defaults), MCK 150 MHz. */
+&cpu0 {
+	clock-frequency = <300000000>;
+};
+
+&flash0 {
+	partitions {
+		ranges;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* 64 KB for storage partition, at the end of the flash */
+		storage_partition: partition@1f0000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x001f0000 DT_SIZE_K(64)>;
+			label = "storage";
+		};
+	};
+};
+
+&uart1 {
+	current-speed = <115200>;
+	pinctrl-0 = <&uart1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&twihs0 {
+	pinctrl-0 = <&twihs0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	/* AT24MAC402 (U600), A2 A1 A0 = 1 1 0 (jumper J603 sets A0). */
+	eeprom: eeprom@56 {
+		compatible = "atmel,24mac402", "atmel,at24";
+		reg = <0x56>;
+		size = <256>;
+		pagesize = <16>;
+		address-width = <8>;
+		timeout = <5>;
+	};
+
+	/* Factory programmed serial number and EUI-48 of the AT24MAC402. */
+	eeprom_mac: eeprom@5e {
+		compatible = "atmel,24mac402", "atmel,at24";
+		reg = <0x5e>;
+		size = <256>;
+		pagesize = <16>;
+		address-width = <8>;
+		timeout = <5>;
+		read-only;
+
+		nvmem-layout {
+			compatible = "fixed-layout";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			mac_address: mac-address@9a {
+				reg = <0x9a 6>;
+				#nvmem-cell-cells = <0>;
+			};
+		};
+	};
+};
+
+/* RMII PHY daughter board (for example LAN8720A) on header J700/J701. */
+&gmac {
+	pinctrl-0 = <&gmac_rmii>;
+	pinctrl-names = "default";
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
+	phy-handle = <&phy>;
+	status = "okay";
+};
+
+&mdio {
+	pinctrl-0 = <&mdio_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	phy: ethernet-phy@0 {
+		compatible = "ethernet-phy";
+		reg = <0>;
+		status = "okay";
+	};
+};
+
+&trng {
+	status = "okay";
+};
+
+&wdt {
+	status = "okay";
+};
+
+/* The ATA6561 standby inputs are tied low: the transceivers are always active. */
+&can0 {
+	pinctrl-0 = <&can0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
+	};
+};
+
+&can1 {
+	pinctrl-0 = <&can1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
+	};
+};
+
+/* Chip selects: Arduino D10 (PD25) and mikroBUS CS (PC18). */
+&spi0 {
+	pinctrl-0 = <&spi0_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&piod 25 GPIO_ACTIVE_LOW>, <&pioc 18 GPIO_ACTIVE_LOW>;
+	dmas = <&xdmac 1 DMA_PERID_SPI0_TX>, <&xdmac 2 DMA_PERID_SPI0_RX>;
+	dma-names = "tx", "rx";
+	status = "okay";
+};
+
+&xdmac {
+	status = "okay";
+};
+
+/* USART0 on the mikroBUS socket; the pins are free for other uses unless USART0 is enabled. */
+&usart0 {
+	current-speed = <115200>;
+	pinctrl-0 = <&usart0_default>;
+	pinctrl-names = "default";
+};
+
+/* UART4 on J402; the pins are free for other uses unless UART4 is enabled. */
+&uart4 {
+	current-speed = <115200>;
+	pinctrl-0 = <&uart4_default>;
+	pinctrl-names = "default";
+};
+
+&rtc {
+	status = "okay";
+};
+
+/* SST26VF032B (U601) on the QSPI lines, used as a single-line SPI flash. */
+&qspi {
+	pinctrl-0 = <&qspi_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	qspi_flash: flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <50000000>;
+		size = <DT_SIZE_M(32)>;
+		jedec-id = [bf 26 42];
+		/*
+		 * Basic Flash Parameters read from the device, with only the
+		 * 4 KiB sector erase: block erase (D8h) erases 8, 32 or 64 KiB
+		 * depending on the address, which the driver cannot handle.
+		 */
+		sfdp-bfp = [fd 20 f1 ff ff ff ff 01 44 eb 08 6b 08 3b 80 bb
+			    fe ff ff ff ff ff 00 ff ff ff 44 0b 0c 20 00 00
+			    00 00 00 00 20 91 48 24 80 6f 1d 81 ed 0f 77 38
+			    30 b0 30 b0 f7 ff ff ff 29 c2 5c ff f0 30 c0 80];
+		requires-ulbpr;
+		use-fast-read;
+		wp-gpios = <&pioa 17 GPIO_ACTIVE_LOW>;
+		hold-gpios = <&piod 31 GPIO_ACTIVE_LOW>;
+	};
+};

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+board:
+  name: sam_e70_cult
+  full_name: PIC32CZ CA70 Curiosity Ultra (SAM E70)
+  vendor: microchip
+  socs:
+    - name: same70q21b

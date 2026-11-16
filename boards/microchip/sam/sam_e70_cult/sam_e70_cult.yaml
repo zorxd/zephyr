@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+identifier: sam_e70_cult
+name: PIC32CZ CA70 Curiosity Ultra (SAM E70)
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+flash: 2048
+ram: 384
+supported:
+  - can
+  - dma
+  - eeprom
+  - entropy
+  - flash
+  - gpio
+  - hwinfo
+  - i2c
+  - netif:eth
+  - pinctrl
+  - rtc
+  - spi
+  - uart
+  - watchdog
+vendor: microchip

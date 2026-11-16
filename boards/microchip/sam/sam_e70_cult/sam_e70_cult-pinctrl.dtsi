@@ -1,0 +1,100 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <dt-bindings/pinctrl/same70q-pinctrl.h>
+
+&pinctrl {
+	/* UART1 to the on-board debugger virtual COM port */
+	uart1_default: uart1_default {
+		group1 {
+			pinmux = <PA5C_UART1_RXD>,
+				 <PA6C_UART1_TXD>;
+			bias-pull-up;
+		};
+	};
+
+	/* TWIHS0 to the AT24MAC402 EEPROM and the extension headers */
+	twihs0_default: twihs0_default {
+		group1 {
+			pinmux = <PA3A_TWI0_TWD>,
+				 <PA4A_TWI0_TWCK>;
+		};
+	};
+
+	/* GMAC RMII to the PHY daughter board header J700/J701 */
+	gmac_rmii: gmac_rmii {
+		group1 {
+			pinmux = <PD0A_GMAC_GTXCK>,
+				 <PD1A_GMAC_GTXEN>,
+				 <PD2A_GMAC_GTX0>,
+				 <PD3A_GMAC_GTX1>,
+				 <PD4A_GMAC_GRXDV>,
+				 <PD5A_GMAC_GRX0>,
+				 <PD6A_GMAC_GRX1>,
+				 <PD7A_GMAC_GRXER>;
+		};
+	};
+
+	mdio_default: mdio_default {
+		group1 {
+			pinmux = <PD8A_GMAC_GMDC>,
+				 <PD9A_GMAC_GMDIO>;
+		};
+	};
+
+	/* MCAN0 to the ATA6561 transceiver U700 */
+	can0_default: can0_default {
+		group1 {
+			pinmux = <PB2A_CAN0_TX>,
+				 <PB3A_CAN0_RX>;
+		};
+	};
+
+	/* MCAN1 to the ATA6561 transceiver U701 */
+	can1_default: can1_default {
+		group1 {
+			pinmux = <PC14C_CAN1_TX>,
+				 <PC12C_CAN1_RX>;
+		};
+	};
+
+	/* SPI0 to the Arduino (D11 MOSI, D12 MISO, D13 SCK) and mikroBUS headers */
+	spi0_default: spi0_default {
+		group1 {
+			pinmux = <PD20B_SPI0_MISO>,
+				 <PD21B_SPI0_MOSI>,
+				 <PD22B_SPI0_SPCK>;
+		};
+	};
+
+	/* USART0 on the mikroBUS socket J803 (pin 3 RX, pin 4 TX) */
+	usart0_default: usart0_default {
+		group1 {
+			pinmux = <PB0C_USART0_RXD>,
+				 <PB1C_USART0_TXD>;
+			bias-pull-up;
+		};
+	};
+
+	/* UART4 on J402 (pin 1 RX, pin 2 TX) */
+	uart4_default: uart4_default {
+		group1 {
+			pinmux = <PD18C_UART4_RXD>,
+				 <PD19C_UART4_TXD>;
+			bias-pull-up;
+		};
+	};
+
+	/* QSPI in SPI mode; QIO2 (WP#) and QIO3 (HOLD#) are GPIOs of the flash node */
+	qspi_default: qspi_default {
+		group1 {
+			pinmux = <PA11A_QSPI_QCS>,
+				 <PA12A_QSPI_QIO1>,
+				 <PA13A_QSPI_QIO0>,
+				 <PA14A_QSPI_QSCK>;
+		};
+	};
+};

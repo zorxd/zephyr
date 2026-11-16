@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_SAM_E70_CULT
+
+# The MAC address is read from the AT24MAC402 EEPROM through NVMEM.
+config EEPROM
+	default y if NVMEM
+
+configdefault ETH_DRIVER
+	default y
+
+if SPI_NOR
+
+# The QSPI flash is erased in 4 KiB sectors only, see the devicetree.
+choice SPI_NOR_SFDP
+	default SPI_NOR_SFDP_DEVICETREE
+endchoice
+
+config SPI_NOR_FLASH_LAYOUT_PAGE_SIZE
+	default 4096
+
+endif # SPI_NOR
+
+endif # BOARD_SAM_E70_CULT

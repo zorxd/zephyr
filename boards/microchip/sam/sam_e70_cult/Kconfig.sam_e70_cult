@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_SAM_E70_CULT
+	select SOC_SAME70Q21B
