@@ -77,7 +77,8 @@ System Clock
 ============
 
 The 12 MHz crystal drives PLLA at 300 MHz. The processor runs at 300 MHz and
-the master clock (MCK) at 150 MHz.
+the master clock (MCK) at 150 MHz. The 32.768 kHz crystal drives the slow
+clock, used by the RTC and the watchdog.
 
 Programming and Debugging
 *************************
