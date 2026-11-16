@@ -85,4 +85,14 @@
 			bias-pull-up;
 		};
 	};
+
+	/* QSPI in SPI mode; QIO2 (WP#) and QIO3 (HOLD#) are GPIOs of the flash node */
+	qspi_default: qspi_default {
+		group1 {
+			pinmux = <PA11A_QSPI_QCS>,
+				 <PA12A_QSPI_QIO1>,
+				 <PA13A_QSPI_QIO0>,
+				 <PA14A_QSPI_QSCK>;
+		};
+	};
 };
