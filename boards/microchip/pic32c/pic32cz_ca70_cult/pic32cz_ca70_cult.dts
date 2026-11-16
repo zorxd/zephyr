@@ -197,5 +197,11 @@
 	pinctrl-0 = <&spi0_default>;
 	pinctrl-names = "default";
 	cs-gpios = <&piod 25 GPIO_ACTIVE_LOW>, <&pioc 18 GPIO_ACTIVE_LOW>;
+	dmas = <&xdmac 1 DMA_PERID_SPI0_TX>, <&xdmac 2 DMA_PERID_SPI0_RX>;
+	dma-names = "tx", "rx";
+	status = "okay";
+};
+
+&xdmac {
 	status = "okay";
 };
