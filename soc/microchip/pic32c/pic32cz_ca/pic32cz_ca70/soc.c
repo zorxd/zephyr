@@ -14,6 +14,7 @@
 
 #define PMC_NODE       DT_NODELABEL(pmc)
 #define MAIN_XTAL_NODE DT_CLOCKS_CTLR_BY_NAME(PMC_NODE, main_xtal)
+#define SLOW_XTAL_NODE DT_CLOCKS_CTLR_BY_NAME(PMC_NODE, slow_xtal)
 
 #define MAIN_XTAL_HZ DT_PROP(MAIN_XTAL_NODE, clock_frequency)
 #define PLLA_MUL     DT_PROP(PMC_NODE, microchip_plla_mul)
@@ -34,6 +35,9 @@ BUILD_ASSERT(HCLK_HZ <= MHZ(300), "processor clock must not exceed 300 MHz");
 BUILD_ASSERT(MCK_HZ <= MHZ(150), "MCK must not exceed 150 MHz");
 BUILD_ASSERT(HCLK_HZ == DT_PROP(DT_PATH(cpus, cpu_0), clock_frequency),
 	     "cpu clock-frequency does not match the PMC configuration");
+BUILD_ASSERT(!DT_NODE_HAS_STATUS_OKAY(SLOW_XTAL_NODE) ||
+		     DT_PROP(SLOW_XTAL_NODE, clock_frequency) == 32768,
+	     "The slow clock crystal must be 32.768 kHz");
 
 /* PMC_MCKR.PRES encoding: 1, 2, 4, 8, 16, 32, 64 -> 0..6 and 3 -> 7. */
 #define MCK_PRES_VAL                                                                               \
@@ -75,6 +79,24 @@ static ALWAYS_INLINE void mck_update(pmc_registers_t *pmc, uint32_t mask, uint32
 {
 	pmc->PMC_MCKR = (pmc->PMC_MCKR & ~mask) | val;
 	mck_wait_ready(pmc);
+}
+
+/*
+ * Switch the slow clock from the internal RC oscillator to the 32.768 kHz
+ * crystal. Only a backup power-on reset switches it back, so the crystal
+ * start-up time is spent on power-up only.
+ */
+static ALWAYS_INLINE void slow_clock_init(void)
+{
+	supc_registers_t *supc = SUPC_REGS;
+
+	if ((supc->SUPC_SR & SUPC_SR_OSCSEL_Msk) != 0U) {
+		return;
+	}
+
+	supc->SUPC_CR = SUPC_CR_KEY_PASSWD | SUPC_CR_XTALSEL_Msk;
+	while ((supc->SUPC_SR & SUPC_SR_OSCSEL_Msk) == 0U) {
+	}
 }
 
 static ALWAYS_INLINE void clock_init(void)
@@ -130,6 +152,10 @@ static ALWAYS_INLINE void clock_init(void)
 	/* The main RC oscillator is no longer needed. */
 	pmc->CKGR_MOR =
 		(pmc->CKGR_MOR & ~(CKGR_MOR_KEY_Msk | CKGR_MOR_MOSCRCEN_Msk)) | CKGR_MOR_KEY_PASSWD;
+
+	if (DT_NODE_HAS_STATUS_OKAY(SLOW_XTAL_NODE)) {
+		slow_clock_init();
+	}
 }
 
 void soc_reset_hook(void)
