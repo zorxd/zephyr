@@ -1,0 +1,23 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* DAC0 on PB13 */
+/ {
+	zephyr,user {
+		io-channels = <&dacc 0>;
+		io-channel-names = "dac1";
+	};
+};
+
+&dacc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,resolution = <12>;
+	};
+};
