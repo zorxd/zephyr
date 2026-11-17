@@ -10,7 +10,9 @@ toolchain:
 flash: 2048
 ram: 384
 supported:
+  - adc
   - can
+  - dac
   - dma
   - eeprom
   - entropy
@@ -20,8 +22,11 @@ supported:
   - i2c
   - netif:eth
   - pinctrl
+  - pwm
   - rtc
+  - sdhc
   - spi
   - uart
+  - usbd
   - watchdog
 vendor: microchip
