@@ -36,6 +36,8 @@
 		i2c-0 = &twihs0;
 		eeprom-0 = &eeprom;
 		rtc = &rtc;
+		pwm-0 = &pwm0;
+		sdhc0 = &hsmci;
 	};
 
 	leds {
@@ -242,5 +244,54 @@
 		use-fast-read;
 		wp-gpios = <&pioa 17 GPIO_ACTIVE_LOW>;
 		hold-gpios = <&piod 31 GPIO_ACTIVE_LOW>;
+	};
+};
+
+/* Arduino A5 */
+&afec0 {
+	pinctrl-0 = <&afec0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* Arduino A0 to A4 */
+&afec1 {
+	pinctrl-0 = <&afec1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* Arduino D5 (channel 0), D6 (channel 2) and D9 (channel 3) */
+&pwm0 {
+	pinctrl-0 = <&pwm0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/*
+ * DAC0 is on PB13 (also PWML2). DAC1 is on PD0, the GMAC GTXCK pin, so it
+ * cannot be used with Ethernet.
+ */
+&dacc {
+	pinctrl-0 = <&dacc_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* Target USB, micro-AB connector J203 */
+zephyr_udc0: &usbhs {
+	status = "okay";
+};
+
+&hsmci {
+	pinctrl-0 = <&hsmci_default>;
+	pinctrl-names = "default";
+	cd-gpios = <&pioc 16 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	mmc {
+		compatible = "zephyr,sdmmc-disk";
+		disk-name = "SD";
+		status = "okay";
 	};
 };

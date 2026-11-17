@@ -48,6 +48,13 @@ The pin assignments are those of :zephyr:board:`pic32cz_ca70_cult`:
   disabled.
 - SST26VF032B QSPI flash, driven as a single-line SPI NOR flash through the
   QSPI controller in SPI mode, at 50 MHz, erased in 4 KiB sectors.
+- Arduino analog inputs A0 to A4 on AFEC1 (AD6, AD7, AD2, AD1, AD5) and A5 on
+  AFEC0 (AD7).
+- PWM0 channels 0, 2 and 3 on Arduino D5 (PD11), D6 (PC19) and D9 (PC21),
+  alias ``pwm-0``.
+- DAC0 on PB13. DAC1 is on PD0, the GMAC GTXCK pin, and is not described.
+- SD card slot on HSMCI, card detect on PC16 (active low), alias ``sdhc0``.
+- Target USB (micro-AB connector J203) on USBHS, as ``zephyr_udc0``.
 
 System Clock
 ============

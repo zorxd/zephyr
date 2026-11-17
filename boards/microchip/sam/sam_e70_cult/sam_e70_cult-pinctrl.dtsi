@@ -97,4 +97,50 @@
 				 <PA14A_QSPI_QSCK>;
 		};
 	};
+
+	/* Arduino A5 (PA18, AD7) */
+	afec0_default: afec0_default {
+		group1 {
+			pinmux = <PA18X_AFE0_AD7>;
+		};
+	};
+
+	/* Arduino A0 (PC31, AD6), A1 (PC26, AD7), A2 (PC15, AD2), A3 (PC13, AD1), A4 (PC30, AD5) */
+	afec1_default: afec1_default {
+		group1 {
+			pinmux = <PC31X_AFE1_AD6>,
+				 <PC26X_AFE1_AD7>,
+				 <PC15X_AFE1_AD2>,
+				 <PC13X_AFE1_AD1>,
+				 <PC30X_AFE1_AD5>;
+		};
+	};
+
+	/* Arduino D5 (PD11, PWMH0), D6 (PC19, PWMH2), D9 (PC21, PWMH3) */
+	pwm0_default: pwm0_default {
+		group1 {
+			pinmux = <PD11B_PWMC0_PWMH0>,
+				 <PC19B_PWMC0_PWMH2>,
+				 <PC21B_PWMC0_PWMH3>;
+		};
+	};
+
+	/* DAC0 on PB13 */
+	dacc_default: dacc_default {
+		group1 {
+			pinmux = <PB13X_DACC_DAC0>;
+		};
+	};
+
+	/* SD card slot */
+	hsmci_default: hsmci_default {
+		group1 {
+			pinmux = <PA28C_HSMCI_MCCDA>,
+				 <PA25D_HSMCI_MCCK>,
+				 <PA30C_HSMCI_MCDA0>,
+				 <PA31C_HSMCI_MCDA1>,
+				 <PA26C_HSMCI_MCDA2>,
+				 <PA27C_HSMCI_MCDA3>;
+		};
+	};
 };
