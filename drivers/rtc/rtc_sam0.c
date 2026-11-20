@@ -277,8 +277,11 @@ static inline uint32_t rtc_sam0_mask_from_alarm_msk(uint32_t alarm_mask)
 static int rtc_sam0_alarm_get_supported_fields(const struct device *dev, uint16_t id,
 					       uint16_t *mask)
 {
-	ARG_UNUSED(dev);
-	ARG_UNUSED(id);
+	const struct rtc_sam0_config *cfg = dev->config;
+
+	if (id >= cfg->alarms_count) {
+		return -EINVAL;
+	}
 
 	*mask = RTC_SAM0_TIME_MASK;
 
@@ -295,7 +298,7 @@ static int rtc_sam0_alarm_set_time(const struct device *dev, uint16_t id, uint16
 	uint32_t datetime;
 	uint32_t alarm_msk;
 
-	if (BIT(id) > RTC_MODE2_INTFLAG_ALARM_Msk) {
+	if (id >= cfg->alarms_count) {
 		return -EINVAL;
 	}
 
@@ -341,7 +344,7 @@ static int rtc_sam0_alarm_get_time(const struct device *dev, uint16_t id, uint16
 	RTC_MODE2_ALARM_Type datetime;
 	uint32_t alarm_msk;
 
-	if (BIT(id) > RTC_MODE2_INTFLAG_ALARM_Msk) {
+	if (id >= cfg->alarms_count) {
 		return -EINVAL;
 	}
 
@@ -373,7 +376,7 @@ static int rtc_sam0_alarm_is_pending(const struct device *dev, uint16_t id)
 	struct rtc_sam0_data *data = dev->data;
 	RtcMode2 *regs = &cfg->regs->MODE2;
 
-	if (BIT(id) > RTC_MODE2_INTFLAG_ALARM_Msk) {
+	if (id >= cfg->alarms_count) {
 		return -EINVAL;
 	}
 
@@ -399,7 +402,7 @@ static int rtc_sam0_alarm_set_callback(const struct device *dev, uint16_t id,
 	struct rtc_sam0_data *data = dev->data;
 	RtcMode2 *regs = &cfg->regs->MODE2;
 
-	if (BIT(id) > RTC_MODE2_INTFLAG_ALARM_Msk) {
+	if (id >= cfg->alarms_count) {
 		return -EINVAL;
 	}
 
