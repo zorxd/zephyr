@@ -77,8 +77,8 @@
 #define ADC_SAM0_CALIB(prefix, val) \
 	UTIL_CAT(ADC_CALIB_, val)( \
 		(((*(uint32_t *)UTIL_CAT(UTIL_CAT(UTIL_CAT(prefix, FUSES_), val), _ADDR)) \
-		>> UTIL_CAT(UTIL_CAT(UTIL_CAT(prefix, FUSES_), val), _Pos)) \
 		& UTIL_CAT(UTIL_CAT(UTIL_CAT(prefix, FUSES_), val), _Msk)) \
+		>> UTIL_CAT(UTIL_CAT(UTIL_CAT(prefix, FUSES_), val), _Pos)) \
 	)
 
 #if ADC_INST_NUM == 1
@@ -103,6 +103,18 @@
 #  define ADC_SAM0_BIASREFBUF(n) ADC_SAM0_CALIB(ADC_FUSES_PREFIX(n), BIASREFBUF)
 #else
 #  define ADC_SAM0_BIASREFBUF(n) 0
+#endif
+
+/* CALIB register value from the fuses of ADC instance n (n is the hardware instance) */
+#define ADC_SAM0_CALIB_VAL(n) \
+	(ADC_SAM0_BIASCOMP(n) | ADC_SAM0_BIASR2R(n) | ADC_SAM0_BIASREFBUF(n))
+
+/* The fuses must be selected by the ADC hardware instance, not by the devicetree instance */
+#if ADC_INST_NUM == 1
+#  define ADC_SAM0_CALIB_FOR(adc) ADC_SAM0_CALIB_VAL(0)
+#else
+#  define ADC_SAM0_CALIB_FOR(adc) \
+	(((adc) == ADC0) ? ADC_SAM0_CALIB_VAL(0) : ADC_SAM0_CALIB_VAL(1))
 #endif
 
 /*
