@@ -885,7 +885,7 @@ static void uart_sam0_irq_err_enable(const struct device *dev)
 	const struct uart_sam0_dev_cfg *config = dev->config;
 	SercomUsart * const regs = config->regs;
 
-	regs->INTENSET.reg |= SERCOM_USART_INTENCLR_ERROR;
+	regs->INTENSET.reg = SERCOM_USART_INTENSET_ERROR;
 	wait_synchronization(regs);
 }
 
@@ -894,7 +894,7 @@ static void uart_sam0_irq_err_disable(const struct device *dev)
 	const struct uart_sam0_dev_cfg *config = dev->config;
 	SercomUsart * const regs = config->regs;
 
-	regs->INTENCLR.reg |= SERCOM_USART_INTENSET_ERROR;
+	regs->INTENCLR.reg = SERCOM_USART_INTENCLR_ERROR;
 	wait_synchronization(regs);
 }
 #endif
