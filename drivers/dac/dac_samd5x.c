@@ -188,14 +188,14 @@ static DEVICE_API(dac, dac_samd5x_driver_api) = {
 	COND_CODE_1(DT_INST_NODE_HAS_PROP(n, reference), \
 				(DT_INST_ENUM_IDX(n, reference)), (0))
 
-#define SAMD5X_DAC_DIFF_MODE(n) DT_INST_PROP_OR(n, differential - mode, 0)
+#define SAMD5X_DAC_DIFF_MODE(n) DT_INST_PROP(n, differential_mode)
 
-/* Channel configuration macros */
-#define CHANNEL_CFG_DEF(n) \
-	{.oversampling = DT_INST_ENUM_IDX_OR(n, oversampling, 0), \
-	 .refresh_period = DT_PROP_OR(n, refresh_period, 0), \
-	 .run_in_standby = DT_PROP_OR(n, run_in_standby, 0), \
-	 .current_control = DT_INST_ENUM_IDX_OR(n, current_control, 0)}
+/* Channel configuration macros, node_id is a channel child node */
+#define CHANNEL_CFG_DEF(node_id) \
+	{.oversampling = DT_ENUM_IDX_OR(node_id, oversampling, 0), \
+	 .refresh_period = DT_PROP_OR(node_id, refresh_period, 0), \
+	 .run_in_standby = DT_PROP_OR(node_id, run_in_standby, 0), \
+	 .current_control = DT_ENUM_IDX_OR(node_id, current_control, 0)}
 
 /* Device initialization macro */
 #define SAMD5X_DAC_INIT(n) \
