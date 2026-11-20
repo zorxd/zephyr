@@ -46,7 +46,6 @@ struct pwm_sam0_config {
 
 #define COUNTER_8BITS 8U
 #define COUNTER_16BITS 16U
-#define SYNC_WAIT_TIMEOUT 5U
 
 
 /* Wait for the peripheral to finish all commands */
@@ -59,7 +58,8 @@ static void wait_synchronization(Tc *regs, uint8_t counter_size)
 		while (regs->COUNT16.SYNCBUSY.reg != 0) {
 		}
 	} else {
-		WAIT_FOR((regs->COUNT32.SYNCBUSY.reg != 0), SYNC_WAIT_TIMEOUT, NULL);
+		while (regs->COUNT32.SYNCBUSY.reg != 0) {
+		}
 	}
 }
 
