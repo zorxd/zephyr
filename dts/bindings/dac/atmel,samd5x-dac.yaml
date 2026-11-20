@@ -60,8 +60,10 @@ properties:
   differential-mode:
     type: boolean
     description: |
-       Enable differential mode. When enabled, the DAC outputs the difference
-       between channel 0 and channel 1 on the VOUT0 pin.
+       Enable differential mode. When enabled, both DACs convert the channel 0
+       value, a signed 12-bit two's complement number, and the output is the
+       difference between VOUT0 (positive) and VOUT1 (negative). Channel 0
+       settings apply to both DACs.
 
   "#io-channel-cells":
     const: 1
@@ -87,6 +89,10 @@ child-binding:
         - 5: 32x oversampling
         Higher oversampling ratios provide better noise reduction but
         reduce the maximum update rate.
+        Note: SAM D5x/E5x silicon revisions A, D, F and G have erratum
+        2.9.4 (DS80000748T): with interpolation (any value other than
+        OSR_1), the last output of the filter is missing, so the final
+        output does not match the written value.
       enum:
         - "OSR_1"
         - "OSR_2"
