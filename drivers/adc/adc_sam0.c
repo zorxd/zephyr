@@ -521,9 +521,7 @@ static DEVICE_API(adc, adc_sam0_api) = {
 do {										\
 	const struct adc_sam0_cfg *const cfg = dev->config;			\
 	Adc * const adc = cfg->regs;						\
-	adc->CALIB.reg = ADC_SAM0_BIASCOMP(n)					\
-			 | ADC_SAM0_BIASR2R(n)					\
-			 | ADC_SAM0_BIASREFBUF(n);				\
+	adc->CALIB.reg = ADC_SAM0_CALIB_FOR(adc);				\
 } while (false)
 
 #else
