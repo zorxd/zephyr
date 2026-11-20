@@ -322,14 +322,26 @@ int eic_mchp_disable_interrupt(struct eic_config_params *eic_pin_config)
 	/*Check whether the pin was assigned to an eic line.*/
 	uint8_t eic_line = find_eic_line_from_pin(eic_pin_config->port_id, eic_pin_config->pin_num);
 
-	if ((eic_line != INTC_LINE_FREE) && ((eic_data->line_busy & BIT(eic_line)) != 0) &&
-	    (eic_data->lines[eic_line].port == eic_pin_config->port_id) &&
-	    (eic_data->lines[eic_line].pin == eic_pin_config->pin_num)) {
-		disable_interrupt_line(eic_cfg->regs, eic_line);
-	} else {
-		LOG_DBG("EIC Line is already free");
+	if (eic_line == INTC_LINE_FREE) {
+		/* The pin has no EIC line, so it cannot have an interrupt enabled */
 		return 0;
 	}
+
+	eic_data->lock = irq_lock();
+
+	/* The line is shared by one pin of each port: only the pin which owns it may disable it */
+	if (((eic_data->line_busy & BIT(eic_line)) == 0) ||
+	    (eic_data->lines[eic_line].port != eic_pin_config->port_id) ||
+	    (eic_data->lines[eic_line].pin != eic_pin_config->pin_num)) {
+		irq_unlock(eic_data->lock);
+		LOG_DBG("EIC line %d is not used by this pin", eic_line);
+		return 0;
+	}
+
+	disable_interrupt_line(eic_cfg->regs, eic_line);
+
+	/* Drop an interrupt that is already pending for this line */
+	eic_cfg->regs->EIC_INTFLAG = BIT(eic_line);
 
 	/*Remove the connection from EIC peripheral*/
 	eic_pin_config->port_addr->PORT_PINCFG[eic_pin_config->pin_num] &=
@@ -338,7 +350,6 @@ int eic_mchp_disable_interrupt(struct eic_config_params *eic_pin_config)
 	/*Clear the pin number and port number from the structure which holds the status of
 	 * each eic line and make it free
 	 */
-	eic_data->lock = irq_lock();
 	eic_data->line_busy &= ~BIT(eic_line);
 
 	/* Remove the assigned pin and port from lines structure */
