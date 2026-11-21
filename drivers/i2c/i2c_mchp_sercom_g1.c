@@ -272,9 +272,9 @@ static bool i2c_baudrate_calc(uint32_t bitrate, uint32_t sys_clock_rate, uint32_
 		baud_offset = ((sys_clock_rate * I2C_TRISE_DEFAULT_NS) / 1000000000U) + 10U;
 	}
 
-	if (bitrate <= I2C_BITRATE_FAST) {
-		/* For I2C clock speed up to 400 kHz, the value of BAUD<7:0>
-		 * determines both SCL_L and SCL_H with SCL_L = SCL_H
+	if (bitrate <= I2C_BITRATE_STANDARD) {
+		/* In Standard mode, the value of BAUD<7:0> determines both SCL_L
+		 * and SCL_H with SCL_L = SCL_H
 		 */
 		baud_min = 2U;
 		baud_max = I2C_BAUD_MAX * 2U;
@@ -302,10 +302,13 @@ static bool i2c_baudrate_calc(uint32_t bitrate, uint32_t sys_clock_rate, uint32_
 		return false;
 	}
 
-	if (bitrate <= I2C_BITRATE_FAST) {
+	if (bitrate <= I2C_BITRATE_STANDARD) {
 		*baud_val = baud_value / 2U;
 	} else {
-		/* For Fm+ mode, I2C SCL_L:SCL_H to 2:1 */
+		/*
+		 * Fm, Fm+ and Hs: SCL_L:SCL_H = 2:1. A 1:1 ratio at 400 kHz gives
+		 * SCL_L of about 1.23 us, below the 1.3 us minimum of Fast mode.
+		 */
 		*baud_val = ((((baud_value * 2U) / 3U) << 8U) | (baud_value / 3U));
 	}
 
