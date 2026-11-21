@@ -448,23 +448,35 @@ static void i2c_init_segment(struct i2c_mchp_dev_data *data)
 					     &data->next_seg_idx);
 }
 
-/* Completes I2C transfer: signals callback (async) or semaphore (sync) */
+/*
+ * Completes I2C transfer: signals callback (async) or semaphore (sync).
+ *
+ * For a synchronous transfer the waiting thread releases the lock once it has
+ * read xfer_status, so that another transfer cannot overwrite the status first.
+ */
 static void i2c_xfer_complete(const struct device *dev, int status)
 {
 	struct i2c_mchp_dev_data *data = DEV_DATA(dev);
 
+	/* No controller interrupt is expected until the next transfer starts */
+	I2CM(dev).SERCOM_INTENCLR = SERCOM_I2CM_INTENCLR_Msk;
+
 #if defined(CONFIG_I2C_CALLBACK)
-	if (data->async_cb != NULL) {
-		data->async_cb(dev, status, data->user_data);
-	} else {
-#endif /*CONFIG_I2C_CALLBACK*/
-		data->xfer_status = status;
-		k_sem_give(&data->sync_sem);
-#if defined(CONFIG_I2C_CALLBACK)
+	i2c_callback_t cb = data->async_cb;
+
+	if (cb != NULL) {
+		void *user_data = data->user_data;
+
+		data->async_cb = NULL;
+		/* Release the bus first so that the callback can start a new transfer */
+		k_sem_give(&data->lock);
+		cb(dev, status, user_data);
+		return;
 	}
 #endif /*CONFIG_I2C_CALLBACK*/
 
-	k_sem_give(&data->lock);
+	data->xfer_status = status;
+	k_sem_give(&data->sync_sem);
 }
 
 /* Handles I2C errors: stops DMA/interrupts */
@@ -720,6 +732,12 @@ static int i2c_transfer_internal(const struct device *dev, struct i2c_msg *msgs,
 	data->next_seg_idx = 0;
 	data->xfer_status = 0;
 
+	/* Drop a completion or error left over by an earlier transfer */
+	k_sem_reset(&data->sync_sem);
+	I2CM(dev).SERCOM_INTFLAG = SERCOM_I2CM_INTFLAG_ERROR_Msk;
+	I2CM(dev).SERCOM_STATUS = SERCOM_I2CM_STATUS_LENERR_Msk | SERCOM_I2CM_STATUS_SEXTTOUT_Msk |
+				  SERCOM_I2CM_STATUS_MEXTTOUT_Msk | SERCOM_I2CM_STATUS_LOWTOUT_Msk;
+
 	i2c_init_segment(data);
 
 	bool is_read = i2c_is_read_op(I2C_CURR_MSG(data));
@@ -752,11 +770,22 @@ static int i2c_transfer_internal(const struct device *dev, struct i2c_msg *msgs,
 	if (cb == NULL) {
 		ret = k_sem_take(&data->sync_sem, I2C_TRANSFER_TIMEOUT_MSEC);
 		if (ret != 0) {
-			LOG_ERR("Transfer timeout");
-			i2c_handle_error(dev, -ETIMEDOUT);
+			unsigned int key = irq_lock();
+
+			/* The ISR may have completed the transfer after the wait ended */
+			if (k_sem_take(&data->sync_sem, K_NO_WAIT) != 0) {
+				LOG_ERR("Transfer timeout");
+				i2c_handle_error(dev, -ETIMEDOUT);
+				k_sem_reset(&data->sync_sem);
+			}
+
+			irq_unlock(key);
 		}
 
-		return data->xfer_status;
+		ret = data->xfer_status;
+		k_sem_give(&data->lock);
+
+		return ret;
 	}
 
 	return 0;
@@ -1223,7 +1252,8 @@ static void i2c_mchp_isr(const struct device *dev)
 	}
 #endif /*CONFIG_I2C_TARGET*/
 
-	uint8_t intflags = I2CM(dev).SERCOM_INTFLAG;
+	/* Flags such as SB are also set while DMA moves the data: only handle enabled ones */
+	uint8_t intflags = I2CM(dev).SERCOM_INTFLAG & I2CM(dev).SERCOM_INTENSET;
 
 	if ((intflags & SERCOM_I2CM_INTFLAG_ERROR_Msk) != 0) {
 		i2c_handle_error(dev, -EIO);
@@ -1300,20 +1330,24 @@ static int i2c_mchp_recover(const struct device *dev)
 	const struct i2c_mchp_dev_config *cfg = DEV_CFG(dev);
 	int ret;
 
+	k_sem_take(&data->lock, K_FOREVER);
+
 	i2c_enable(dev, false);
 	I2CM(dev).SERCOM_INTENCLR = SERCOM_I2CM_INTENCLR_Msk;
 
 	ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret != 0) {
 		LOG_ERR("Failed to apply pinctrl: %d", ret);
+		k_sem_give(&data->lock);
 		return ret;
 	}
 
-	k_sem_init(&data->lock, 1, 1);
-	k_sem_init(&data->sync_sem, 0, 1);
+	k_sem_reset(&data->sync_sem);
 
 	i2c_enable(dev, true);
 	i2c_set_bus_idle(dev);
+
+	k_sem_give(&data->lock);
 
 	return 0;
 }
