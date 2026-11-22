@@ -223,6 +223,8 @@
 &qspi {
 	pinctrl-0 = <&qspi_default>;
 	pinctrl-names = "default";
+	dmas = <&xdmac 3 DMA_PERID_QSPI_TX>, <&xdmac 4 DMA_PERID_QSPI_RX>;
+	dma-names = "tx", "rx";
 	status = "okay";
 
 	qspi_flash: flash@0 {
