@@ -193,8 +193,8 @@ static void spi_mchp_qspi_g1_shift(qspi_registers_t *regs, const uint8_t *tx_buf
 }
 
 #ifdef CONFIG_SPI_MCHP_QSPI_G1_DMA
-static void spi_mchp_qspi_g1_dma_rx_done(const struct device *dma_dev, void *arg, uint32_t channel,
-					 int status)
+static void spi_mchp_qspi_g1_dma_done(const struct device *dma_dev, void *arg, uint32_t channel,
+				      int status)
 {
 	struct spi_mchp_qspi_g1_data *data = arg;
 
@@ -210,25 +210,30 @@ static void spi_mchp_qspi_g1_dma_rx_done(const struct device *dma_dev, void *arg
 }
 
 /*
- * Shift len bytes with two DMA channels: RX (RXC trigger) into rx_buf or a
- * dummy byte, TX (DRE trigger) from tx_buf or a dummy byte. The RX channel is
- * started first, so the transfer is complete once its last byte is received.
+ * Shift len bytes with DMA.
+ *
+ * Receiving: two channels, RX (RXC trigger) into rx_buf and TX (DRE trigger)
+ * from tx_buf or a dummy byte. The RX channel is started first, so the transfer
+ * is complete once its last byte is received.
+ *
+ * Sending only (rx_buf NULL): the TX channel alone keeps TXDATA full. Nothing
+ * reads RXDATA, so it overruns; that is harmless and cleared at the end.
  */
 static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *tx_buf,
 				      uint8_t *rx_buf, size_t len)
 {
 	static const uint8_t tx_dummy;
-	static uint8_t rx_dummy;
 	const struct spi_mchp_qspi_g1_config *cfg = dev->config;
 	struct spi_mchp_qspi_g1_data *data = dev->data;
 	const struct spi_mchp_qspi_g1_dma *dma = &cfg->dma;
 	qspi_registers_t *regs = cfg->regs;
+	const bool rx = (rx_buf != NULL);
 	struct dma_block_config rx_blk = {
 		.block_size = len,
 		.source_address = (uint32_t)&regs->QSPI_RXDATA,
 		.source_addr_adj = DMA_ADDR_ADJ_NO_CHANGE,
-		.dest_address = (rx_buf != NULL) ? (uint32_t)rx_buf : (uint32_t)&rx_dummy,
-		.dest_addr_adj = (rx_buf != NULL) ? DMA_ADDR_ADJ_INCREMENT : DMA_ADDR_ADJ_NO_CHANGE,
+		.dest_address = (uint32_t)rx_buf,
+		.dest_addr_adj = DMA_ADDR_ADJ_INCREMENT,
 	};
 	struct dma_block_config tx_blk = {
 		.block_size = len,
@@ -247,7 +252,7 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		.block_count = 1U,
 		.head_block = &rx_blk,
 		.user_data = data,
-		.dma_callback = spi_mchp_qspi_g1_dma_rx_done,
+		.dma_callback = spi_mchp_qspi_g1_dma_done,
 	};
 	struct dma_config tx_cfg = {
 		.dma_slot = dma->tx_trigsrc,
@@ -257,6 +262,9 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		.dest_data_size = 1U,
 		.block_count = 1U,
 		.head_block = &tx_blk,
+		/* Without RX, the TX channel signals the end of the transfer */
+		.user_data = rx ? NULL : data,
+		.dma_callback = rx ? NULL : spi_mchp_qspi_g1_dma_done,
 	};
 	/* Twice the time on the wire, plus a margin for scheduling */
 	k_timeout_t timeout =
@@ -265,9 +273,11 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 
 	k_sem_reset(&data->dma_done);
 
-	ret = dma_config(dma->dev, dma->rx_channel, &rx_cfg);
-	if (ret < 0) {
-		return ret;
+	if (rx) {
+		ret = dma_config(dma->dev, dma->rx_channel, &rx_cfg);
+		if (ret < 0) {
+			return ret;
+		}
 	}
 
 	ret = dma_config(dma->dev, dma->tx_channel, &tx_cfg);
@@ -275,14 +285,18 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		return ret;
 	}
 
-	ret = dma_start(dma->dev, dma->rx_channel);
-	if (ret < 0) {
-		return ret;
+	if (rx) {
+		ret = dma_start(dma->dev, dma->rx_channel);
+		if (ret < 0) {
+			return ret;
+		}
 	}
 
 	ret = dma_start(dma->dev, dma->tx_channel);
 	if (ret < 0) {
-		(void)dma_stop(dma->dev, dma->rx_channel);
+		if (rx) {
+			(void)dma_stop(dma->dev, dma->rx_channel);
+		}
 		return ret;
 	}
 
@@ -295,13 +309,29 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 	}
 
 	(void)dma_stop(dma->dev, dma->tx_channel);
-	(void)dma_stop(dma->dev, dma->rx_channel);
 
-	/* A late RX DMA lets RXDATA overrun and drops a byte */
-	if ((regs->QSPI_INTFLAG & QSPI_INTFLAG_ERROR_Msk) != 0U) {
+	if (rx) {
+		(void)dma_stop(dma->dev, dma->rx_channel);
+
+		/* A late RX DMA lets RXDATA overrun and drops a byte */
+		if ((regs->QSPI_INTFLAG & QSPI_INTFLAG_ERROR_Msk) != 0U) {
+			regs->QSPI_INTFLAG = QSPI_INTFLAG_ERROR_Msk;
+			LOG_ERR("RXDATA overrun during DMA transfer");
+			ret = -EIO;
+		}
+	} else {
+		/* The DMA is done once the last byte is in TXDATA: wait for it to be sent */
+		if ((ret == 0) &&
+		    !WAIT_FOR((regs->QSPI_INTFLAG & QSPI_INTFLAG_TXC_Msk) != 0U, 1000, NULL)) {
+			LOG_ERR("TXC timed out");
+			ret = -ETIMEDOUT;
+		}
+
+		/* Nothing read the received bytes: drop them and the overrun flag */
+		while ((regs->QSPI_INTFLAG & QSPI_INTFLAG_RXC_Msk) != 0U) {
+			(void)regs->QSPI_RXDATA;
+		}
 		regs->QSPI_INTFLAG = QSPI_INTFLAG_ERROR_Msk;
-		LOG_ERR("RXDATA overrun during DMA transfer");
-		ret = -EIO;
 	}
 
 	return ret;
