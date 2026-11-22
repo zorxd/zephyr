@@ -123,7 +123,8 @@ static void sam_xdmac_isr(const struct device *dev)
 	}
 }
 
-#if defined(CONFIG_SOC_SERIES_SAMX7X) && DT_NODE_EXISTS(DT_NODELABEL(sram0))
+#if (defined(CONFIG_SOC_SERIES_SAMX7X) || defined(CONFIG_SOC_SERIES_PIC32CZ_CA70)) && \
+	DT_NODE_EXISTS(DT_NODELABEL(sram0))
 /*
  * The internal SRAM has two bus matrix ports. Interface 0 reaches one of them,
  * shared only with the ICM. Interface 1 reaches the other one, shared with the
