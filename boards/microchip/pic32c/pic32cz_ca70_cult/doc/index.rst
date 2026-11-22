@@ -74,7 +74,9 @@ The user LEDs are LED0 on PD23 and LED1 on PD29, both active low. The user
 buttons are SW0 on PA1 and SW1 on PA9, both active low.
 
 The SST26VF032B QSPI flash is driven as a single-line SPI NOR flash through the
-QSPI controller in SPI mode, at 50 MHz.
+QSPI controller in SPI mode, at 50 MHz. Transfers of at least
+:kconfig:option:`CONFIG_SPI_SAM_QSPI_DMA_THRESHOLD` bytes use XDMAC channels 3 (TX) and 4
+(RX), unless :kconfig:option:`CONFIG_SPI_SAM_QSPI_DMA` is disabled.
 
 System Clock
 ============
