@@ -766,8 +766,15 @@ static int dma_mchp_init(const struct device *dev)
 	dmac_desc_init(dev);
 	desc_pool_init(dev_data);
 
-	DMAC_REG->DMAC_PRICTRL0 = DMAC_PRICTRL0_LVLPRI0(0) | DMAC_PRICTRL0_LVLPRI1(1) |
-				  DMAC_PRICTRL0_LVLPRI2(2) | DMAC_PRICTRL0_LVLPRI3(3);
+	/*
+	 * Static arbitration within each level (RRLVLENn = 0). QOSn is the SRAM
+	 * quality of service of the DMAC accesses: keep the reset value MEDIUM
+	 * (latency sensitive); 0 would put the DMAC behind the CPU and the GMAC.
+	 */
+	DMAC_REG->DMAC_PRICTRL0 = DMAC_PRICTRL0_QOS0(DMAC_PRICTRL0_QOS0_MEDIUM_Val) |
+				  DMAC_PRICTRL0_QOS1(DMAC_PRICTRL0_QOS1_MEDIUM_Val) |
+				  DMAC_PRICTRL0_QOS2(DMAC_PRICTRL0_QOS2_MEDIUM_Val) |
+				  DMAC_PRICTRL0_QOS3(DMAC_PRICTRL0_QOS3_MEDIUM_Val);
 
 	DMAC_REG->DMAC_CTRL = DMAC_CTRL_DMAENABLE(1) | DMAC_CTRL_LVLEN(0x0F);
 
