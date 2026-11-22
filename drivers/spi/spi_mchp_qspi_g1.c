@@ -37,8 +37,9 @@ LOG_MODULE_REGISTER(spi_mchp_qspi_g1, CONFIG_SPI_LOG_LEVEL);
 #define QSPI_G1_DMA_MAX_LEN UINT16_MAX
 
 /*
- * TX may run one byte ahead of RX, so the RX channel must read RXDATA within
- * one byte time: give it the highest priority level.
+ * When receiving, both channels are triggered by RXC: the RX channel reads the
+ * byte just received and the TX channel writes the next one. The RX channel has
+ * the higher priority level, so it is served first.
  */
 #define QSPI_G1_DMA_RX_PRIORITY (DMAC_LVL_NUM - 1U)
 #define QSPI_G1_DMA_TX_PRIORITY 0U
@@ -212,12 +213,14 @@ static void spi_mchp_qspi_g1_dma_done(const struct device *dma_dev, void *arg, u
 /*
  * Shift len bytes with DMA.
  *
- * Receiving: two channels, RX (RXC trigger) into rx_buf and TX (DRE trigger)
- * from tx_buf or a dummy byte. The RX channel is started first, so the transfer
- * is complete once its last byte is received.
- *
- * Sending only (rx_buf NULL): the TX channel alone keeps TXDATA full. Nothing
+ * Sending only (rx_buf NULL): one TX channel on DRE keeps TXDATA full. Nothing
  * reads RXDATA, so it overruns; that is harmless and cleared at the end.
+ *
+ * Receiving: the CPU writes the first byte, then the RX and TX channels are
+ * both triggered by RXC: the RX channel reads the byte just received, the TX
+ * channel writes the next one. A byte is only sent after the previous one is
+ * received, so RXDATA cannot overrun however late the DMAC is served (with TX
+ * on DRE, the RX channel had one byte time, and missed it under bus load).
  */
 static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *tx_buf,
 				      uint8_t *rx_buf, size_t len)
@@ -228,6 +231,9 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 	const struct spi_mchp_qspi_g1_dma *dma = &cfg->dma;
 	qspi_registers_t *regs = cfg->regs;
 	const bool rx = (rx_buf != NULL);
+	/* When receiving, the CPU writes the first byte */
+	const size_t tx_len = rx ? len - 1U : len;
+	const uint8_t *tx_src = (tx_buf != NULL) ? (rx ? &tx_buf[1] : tx_buf) : &tx_dummy;
 	struct dma_block_config rx_blk = {
 		.block_size = len,
 		.source_address = (uint32_t)&regs->QSPI_RXDATA,
@@ -236,8 +242,8 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		.dest_addr_adj = DMA_ADDR_ADJ_INCREMENT,
 	};
 	struct dma_block_config tx_blk = {
-		.block_size = len,
-		.source_address = (tx_buf != NULL) ? (uint32_t)tx_buf : (uint32_t)&tx_dummy,
+		.block_size = tx_len,
+		.source_address = (uint32_t)tx_src,
 		.source_addr_adj =
 			(tx_buf != NULL) ? DMA_ADDR_ADJ_INCREMENT : DMA_ADDR_ADJ_NO_CHANGE,
 		.dest_address = (uint32_t)&regs->QSPI_TXDATA,
@@ -255,7 +261,7 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		.dma_callback = spi_mchp_qspi_g1_dma_done,
 	};
 	struct dma_config tx_cfg = {
-		.dma_slot = dma->tx_trigsrc,
+		.dma_slot = rx ? dma->rx_trigsrc : dma->tx_trigsrc,
 		.channel_direction = MEMORY_TO_PERIPHERAL,
 		.channel_priority = QSPI_G1_DMA_TX_PRIORITY,
 		.source_data_size = 1U,
@@ -266,9 +272,9 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		.user_data = rx ? NULL : data,
 		.dma_callback = rx ? NULL : spi_mchp_qspi_g1_dma_done,
 	};
-	/* Twice the time on the wire, plus a margin for scheduling */
+	/* Four times the time on the wire, plus a margin for scheduling */
 	k_timeout_t timeout =
-		K_MSEC(DIV_ROUND_UP((uint64_t)len * 8U * 2U * MSEC_PER_SEC, data->sck_hz) + 10U);
+		K_MSEC(DIV_ROUND_UP((uint64_t)len * 8U * 4U * MSEC_PER_SEC, data->sck_hz) + 10U);
 	int ret;
 
 	k_sem_reset(&data->dma_done);
@@ -278,26 +284,29 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		if (ret < 0) {
 			return ret;
 		}
-	}
 
-	ret = dma_config(dma->dev, dma->tx_channel, &tx_cfg);
-	if (ret < 0) {
-		return ret;
-	}
-
-	if (rx) {
 		ret = dma_start(dma->dev, dma->rx_channel);
 		if (ret < 0) {
 			return ret;
 		}
 	}
 
-	ret = dma_start(dma->dev, dma->tx_channel);
-	if (ret < 0) {
-		if (rx) {
-			(void)dma_stop(dma->dev, dma->rx_channel);
+	if (tx_len > 0U) {
+		ret = dma_config(dma->dev, dma->tx_channel, &tx_cfg);
+		if (ret == 0) {
+			ret = dma_start(dma->dev, dma->tx_channel);
 		}
-		return ret;
+		if (ret < 0) {
+			if (rx) {
+				(void)dma_stop(dma->dev, dma->rx_channel);
+			}
+			return ret;
+		}
+	}
+
+	if (rx) {
+		/* The first byte starts the RXC-paced transfer */
+		regs->QSPI_TXDATA = (tx_buf != NULL) ? tx_buf[0] : 0U;
 	}
 
 	ret = k_sem_take(&data->dma_done, timeout);
@@ -308,12 +317,13 @@ static int spi_mchp_qspi_g1_dma_shift(const struct device *dev, const uint8_t *t
 		ret = data->dma_status;
 	}
 
-	(void)dma_stop(dma->dev, dma->tx_channel);
+	if (tx_len > 0U) {
+		(void)dma_stop(dma->dev, dma->tx_channel);
+	}
 
 	if (rx) {
 		(void)dma_stop(dma->dev, dma->rx_channel);
 
-		/* A late RX DMA lets RXDATA overrun and drops a byte */
 		if ((regs->QSPI_INTFLAG & QSPI_INTFLAG_ERROR_Msk) != 0U) {
 			regs->QSPI_INTFLAG = QSPI_INTFLAG_ERROR_Msk;
 			LOG_ERR("RXDATA overrun during DMA transfer");
