@@ -418,17 +418,13 @@ static int sam_usbhs_prep_out(const struct device *dev,
 		nbusybk, dtseq);
 
 	/*
-	 * Clear FIFOCON to release any previously held bank and make it
-	 * available for the host to write. For EP0 this is handled differently
-	 * (single bank, no FIFOCON management needed).
-	 */
-	if (ep_idx != 0) {
-		base->USBHS_DEVEPTIDR[ep_idx] = USBHS_DEVEPTIDR_FIFOCONC;
-	}
-
-	/*
+	 * Do not clear FIFOCON here: a bank may already hold a packet the host
+	 * sent after the previous transfer completed, and clearing FIFOCON
+	 * would discard it. The ISR reads it as soon as RXOUTE is enabled.
+	 *
 	 * Ensure RXOUTE interrupt is enabled. This is necessary because:
 	 * - The interrupt may have been disabled by the ISR when deferring
+	 *   or when the previous transfer completed
 	 * - For multi-packet transfers, we need to keep receiving
 	 */
 	base->USBHS_DEVEPTIER[ep_idx] = USBHS_DEVEPTIER_RXOUTES;
@@ -682,37 +678,32 @@ static int sam_usbhs_process_pending_out(const struct device *dev,
 	bool is_ctrl = (ep_idx == 0);
 
 	/*
-	 * Check if data is available:
-	 * - Control EP0: Check RXOUTI (FIFOCON is always 0)
-	 * - Bulk/Int/Iso: Check FIFOCON
+	 * Bulk/Int/Iso: the packet stays in its bank with RXOUTE disabled.
+	 * Queuing the next buffer goes through sam_usbhs_prep_out(), which
+	 * enables RXOUTE so that the ISR reads it. Reading it here could race
+	 * with the ISR once RXOUTE is enabled.
 	 */
-	if (is_ctrl) {
-		if (!(base->USBHS_DEVEPTISR[ep_idx] & USBHS_DEVEPTISR_RXOUTI)) {
-			LOG_DBG("EP0 OUT no data (RXOUTI=0)");
-			/* Re-enable RXOUTE since no data to process */
-			base->USBHS_DEVEPTIER[ep_idx] = USBHS_DEVEPTIER_RXOUTES;
-			return 0;
-		}
-	} else {
-		if (!(base->USBHS_DEVEPTIMR[ep_idx] & USBHS_DEVEPTIMR_FIFOCON)) {
-			LOG_DBG("OUT ep 0x%02x no data in bank (FIFOCON=0)", ep_addr);
-			return 0;
-		}
+	if (!is_ctrl) {
+		LOG_DBG("OUT ep 0x%02x data waits for the next buffer", ep_addr);
+		return 0;
+	}
+
+	/* Control EP0: check RXOUTI (FIFOCON is always 0) */
+	if (!(base->USBHS_DEVEPTISR[ep_idx] & USBHS_DEVEPTISR_RXOUTI)) {
+		LOG_DBG("EP0 OUT no data (RXOUTI=0)");
+		/* Re-enable RXOUTE since no data to process */
+		base->USBHS_DEVEPTIER[ep_idx] = USBHS_DEVEPTIER_RXOUTES;
+		return 0;
 	}
 
 	buf = udc_buf_peek(ep_cfg);
 	if (buf == NULL) {
 		/*
-		 * No buffer available. Leave data in FIFO.
-		 * Host will get NAK for subsequent packets.
-		 * Keep pending bit set to retry when buffer available.
+		 * No buffer available. Leave data in FIFO, keep RXOUTE
+		 * disabled and RXOUTI set. Host will get NAK for subsequent
+		 * packets.
 		 */
-		if (is_ctrl) {
-			/* For EP0, keep RXOUTE disabled, keep RXOUTI set */
-			LOG_WRN("EP0 OUT no buffer - NAK until ready");
-		} else {
-			LOG_WRN("OUT ep 0x%02x no buffer - NAK until ready", ep_addr);
-		}
+		LOG_WRN("EP0 OUT no buffer - NAK until ready");
 		return -ENOBUFS;
 	}
 
@@ -726,27 +717,16 @@ static int sam_usbhs_process_pending_out(const struct device *dev,
 	size = MIN(byte_count, net_buf_tailroom(buf));
 
 	/* Read data from FIFO */
-	if (is_ctrl) {
-		for (uint32_t i = 0; i < size; i++) {
-			priv->ctrl_out_buf[i] = fifo[i];
-		}
-		net_buf_add_mem(buf, priv->ctrl_out_buf, size);
-	} else {
-		uint8_t *data = net_buf_add(buf, size);
-
-		for (uint32_t i = 0; i < size; i++) {
-			data[i] = fifo[i];
-		}
+	for (uint32_t i = 0; i < size; i++) {
+		priv->ctrl_out_buf[i] = fifo[i];
 	}
+	net_buf_add_mem(buf, priv->ctrl_out_buf, size);
 
 	/*
 	 * Release the bank and re-enable interrupts.
 	 * ISR left RXOUTI set when deferring, clear it now.
 	 */
 	base->USBHS_DEVEPTICR[ep_idx] = USBHS_DEVEPTICR_RXOUTIC;
-	if (!is_ctrl) {
-		base->USBHS_DEVEPTIDR[ep_idx] = USBHS_DEVEPTIDR_FIFOCONC;
-	}
 	base->USBHS_DEVEPTIER[ep_idx] = USBHS_DEVEPTIER_RXOUTES;
 
 	if (!net_buf_tailroom(buf) || size < udc_mps_ep_size(ep_cfg)) {
