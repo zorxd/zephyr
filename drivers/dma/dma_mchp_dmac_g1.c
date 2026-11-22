@@ -24,6 +24,9 @@ LOG_MODULE_REGISTER(dma_mchp_dmac_g1, CONFIG_DMA_LOG_LEVEL);
 #define DMAC_COPY_ALIGNMENT     4U
 #define DMAC_MAX_BLOCK_COUNT    65535U
 
+/* SRAM quality of service "latency sensitive" (MEDIUM in the SG41 header, SENSITIVE on E5x) */
+#define DMAC_QOS_LATENCY_SENSITIVE 2U
+
 #define TIMEOUT_VALUE_US 1000
 #define DELAY_US         2
 
@@ -766,8 +769,16 @@ static int dma_mchp_init(const struct device *dev)
 	dmac_desc_init(dev);
 	desc_pool_init(dev_data);
 
-	DMAC_REG->DMAC_PRICTRL0 = DMAC_PRICTRL0_LVLPRI0(0) | DMAC_PRICTRL0_LVLPRI1(1) |
-				  DMAC_PRICTRL0_LVLPRI2(2) | DMAC_PRICTRL0_LVLPRI3(3);
+	/*
+	 * Static arbitration within each level (RRLVLENn = 0). QOSn is the SRAM
+	 * quality of service of the DMAC accesses: keep the reset value 2 (latency
+	 * sensitive, named MEDIUM or SENSITIVE depending on the device header); 0
+	 * would put the DMAC behind the CPU and the GMAC.
+	 */
+	DMAC_REG->DMAC_PRICTRL0 = DMAC_PRICTRL0_QOS0(DMAC_QOS_LATENCY_SENSITIVE) |
+				  DMAC_PRICTRL0_QOS1(DMAC_QOS_LATENCY_SENSITIVE) |
+				  DMAC_PRICTRL0_QOS2(DMAC_QOS_LATENCY_SENSITIVE) |
+				  DMAC_PRICTRL0_QOS3(DMAC_QOS_LATENCY_SENSITIVE);
 
 	DMAC_REG->DMAC_CTRL = DMAC_CTRL_DMAENABLE(1) | DMAC_CTRL_LVLEN(0x0F);
 
