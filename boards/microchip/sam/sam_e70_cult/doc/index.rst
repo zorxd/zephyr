@@ -47,7 +47,8 @@ The pin assignments are those of :zephyr:board:`pic32cz_ca70_cult`:
 - USART0 on the mikroBUS socket J803 and UART4 on J402, described but
   disabled.
 - SST26VF032B QSPI flash, driven as a single-line SPI NOR flash through the
-  QSPI controller in SPI mode, at 50 MHz, erased in 4 KiB sectors.
+  QSPI controller in SPI mode, at 50 MHz, erased in 4 KiB sectors. Transfers
+  use XDMAC channels 3 (TX) and 4 (RX).
 - Arduino analog inputs A0 to A4 on AFEC1 (AD6, AD7, AD2, AD1, AD5) and A5 on
   AFEC0 (AD7).
 - PWM0 channels 0, 2 and 3 on Arduino D5 (PD11), D6 (PC19) and D9 (PC21),
