@@ -20,6 +20,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/__assert.h>
 #include <zephyr/sys/util.h>
 #include <soc.h>
 
@@ -210,14 +211,21 @@ static void spi_sam_qspi_dma_done(const struct device *dma_dev, void *arg, uint3
 }
 
 /*
- * Shift len bytes with the XDMAC: TX (TDRE request) from tx_buf or a dummy
- * byte and, if rx_buf is set, RX (RDRF request) into rx_buf. The RX channel is
- * started first, so the transfer is complete once its last byte is received.
- * rx_buf, if set, must cover whole data cache lines.
+ * Shift len bytes with the XDMAC.
  *
- * Without rx_buf, only the TX channel runs and the received bytes are dropped:
- * a TX source in flash can stall the XDMAC long enough to overrun QSPI_RDR,
- * which would lose bytes of an RX channel and never let it complete.
+ * Sending only (rx_buf NULL): one TX channel, triggered by TDRE, keeps QSPI_TDR
+ * full. Nothing reads QSPI_RDR, so it overruns; that is harmless and cleared at
+ * the end. The received bytes are dropped.
+ *
+ * Receiving: the CPU writes the first byte, then the RX and TX channels are
+ * both triggered by RDRF: the RX channel reads the byte just received into
+ * rx_buf and the TX channel writes the next one. A byte is only sent after the
+ * previous one is received, so QSPI_RDR cannot overrun however late the XDMAC
+ * is served (with TX on TDRE the RX channel had one byte time, 160 ns at
+ * 50 MHz, and missed it under bus load: QSPI_RDR overrun, a lost byte, and a
+ * transfer that never completed). The RX channel is started first, so the
+ * transfer is complete once its last byte is received. rx_buf, if set, must
+ * cover whole data cache lines and len must be at least 2.
  */
 static int spi_sam_qspi_dma_shift(const struct device *dev, const uint8_t *tx_buf, uint8_t *rx_buf,
 				  size_t len)
@@ -228,6 +236,10 @@ static int spi_sam_qspi_dma_shift(const struct device *dev, const uint8_t *tx_bu
 	struct spi_sam_qspi_data *data = dev->data;
 	const struct spi_sam_qspi_dma *dma = &cfg->dma;
 	sam_qspi_regs_t *regs = cfg->regs;
+	const bool rx = (rx_buf != NULL);
+	/* When receiving, the CPU writes the first byte */
+	const size_t tx_len = rx ? len - 1U : len;
+	const uint8_t *tx_src = (tx_buf != NULL) ? (rx ? &tx_buf[1] : tx_buf) : &tx_dummy;
 	struct dma_block_config rx_blk = {
 		.block_size = len,
 		.source_address = (uint32_t)&regs->QSPI_RDR,
@@ -236,8 +248,8 @@ static int spi_sam_qspi_dma_shift(const struct device *dev, const uint8_t *tx_bu
 		.dest_addr_adj = DMA_ADDR_ADJ_INCREMENT,
 	};
 	struct dma_block_config tx_blk = {
-		.block_size = len,
-		.source_address = (tx_buf != NULL) ? (uint32_t)tx_buf : (uint32_t)&tx_dummy,
+		.block_size = tx_len,
+		.source_address = (uint32_t)tx_src,
 		.source_addr_adj =
 			(tx_buf != NULL) ? DMA_ADDR_ADJ_INCREMENT : DMA_ADDR_ADJ_NO_CHANGE,
 		.dest_address = (uint32_t)&regs->QSPI_TDR,
@@ -257,7 +269,8 @@ static int spi_sam_qspi_dma_shift(const struct device *dev, const uint8_t *tx_bu
 		.dma_callback = spi_sam_qspi_dma_done,
 	};
 	struct dma_config tx_cfg = {
-		.dma_slot = dma->tx_perid,
+		/* When receiving, send the next byte when the previous one is received */
+		.dma_slot = rx ? dma->rx_perid : dma->tx_perid,
 		.channel_direction = MEMORY_TO_PERIPHERAL,
 		.source_data_size = 1U,
 		.dest_data_size = 1U,
@@ -273,6 +286,8 @@ static int spi_sam_qspi_dma_shift(const struct device *dev, const uint8_t *tx_bu
 	k_timeout_t timeout =
 		K_MSEC(DIV_ROUND_UP((uint64_t)len * 8U * 2U * MSEC_PER_SEC, data->sck_hz) + 10U);
 	int ret;
+
+	__ASSERT_NO_MSG(!rx || len >= 2U);
 
 	if (tx_buf != NULL) {
 		(void)sys_cache_data_flush_range((void *)tx_buf, len);
@@ -313,6 +328,11 @@ static int spi_sam_qspi_dma_shift(const struct device *dev, const uint8_t *tx_bu
 			(void)dma_stop(dma->dev, dma->rx_channel);
 		}
 		return ret;
+	}
+
+	if (rx) {
+		/* Both channels wait for RDRF: this byte starts the chain */
+		regs->QSPI_TDR = (tx_buf != NULL) ? tx_buf[0] : 0U;
 	}
 
 	ret = k_sem_take(&data->dma_done, timeout);
@@ -372,7 +392,7 @@ static int spi_sam_qspi_xfer(const struct device *dev, const uint8_t *tx_buf, ui
 
 	body = MIN(body, ROUND_DOWN(SAM_QSPI_DMA_MAX_LEN, SAM_QSPI_DMA_RX_ALIGN));
 
-	if ((cfg->dma.dev == NULL) || (body < CONFIG_SPI_SAM_QSPI_DMA_THRESHOLD)) {
+	if ((cfg->dma.dev == NULL) || (body < MAX(CONFIG_SPI_SAM_QSPI_DMA_THRESHOLD, 2))) {
 		spi_sam_qspi_shift(cfg->regs, tx_buf, rx_buf, len);
 		return (int)len;
 	}
