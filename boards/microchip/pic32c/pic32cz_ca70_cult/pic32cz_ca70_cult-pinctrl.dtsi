@@ -95,4 +95,22 @@
 				 <PA14A_QSPI_QSCK>;
 		};
 	};
+
+	/*
+	 * QSPI in serial memory mode, quad I/O. The pull-ups keep the data
+	 * lines high while the controller does not drive them (dummy cycles).
+	 */
+	qspi_quad: qspi_quad {
+		group1 {
+			pinmux = <PA11A_QSPI_QCS>,
+				 <PA14A_QSPI_QSCK>;
+		};
+		group2 {
+			pinmux = <PA13A_QSPI_QIO0>,
+				 <PA12A_QSPI_QIO1>,
+				 <PA17A_QSPI_QIO2>,
+				 <PD31A_QSPI_QIO3>;
+			bias-pull-up;
+		};
+	};
 };
