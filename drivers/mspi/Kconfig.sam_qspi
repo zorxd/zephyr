@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config MSPI_SAM_QSPI
+	bool "Atmel SAM QSPI controller in serial memory mode"
+	default y
+	depends on DT_HAS_ATMEL_SAM_QSPI_CONTROLLER_ENABLED
+	select PINCTRL
+	help
+	  MSPI driver for the QSPI controller of the SAM E70/S70/V70/V71 and
+	  PIC32CZ CA70/MC70 in serial memory mode: single, dual and quad I/O
+	  transfers to one device, for example a NOR flash through the
+	  jedec,nor driver. Transfers are polled.

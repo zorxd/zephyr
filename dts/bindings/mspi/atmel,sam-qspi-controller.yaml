@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Atmel SAM QSPI controller in serial memory mode, as found on SAM
+  E70/S70/V70/V71 and PIC32CZ CA70/MC70, with an MSPI interface.
+
+  The controller drives one device on its hardware chip select, QCS, in
+  single, dual or quad I/O (1-1-1, 1-1-2, 1-2-2, 2-2-2, 1-1-4, 1-4-4 and
+  4-4-4), single data rate. Data goes through the serial memory window,
+  the second reg entry, which must be mapped as device memory: cached or
+  speculative accesses to it would read extra data from the device. For
+  example, in the board devicetree:
+
+    memory@80000000 {
+      compatible = "zephyr,memory-region";
+      reg = <0x80000000 DT_SIZE_M(4)>;
+      zephyr,memory-region = "QSPI_MM";
+      zephyr,memory-attr = <DT_MEM_ARM(ATTR_MPU_IO)>;
+    };
+
+  The SoC node has the "atmel,sam-qspi" compatible (SPI mode); a board
+  selects this driver by overriding it:
+
+    &qspi {
+      compatible = "atmel,sam-qspi-controller";
+      pinctrl-0 = <&qspi_quad>;
+      pinctrl-names = "default";
+      status = "okay";
+
+      flash@0 {
+        compatible = "jedec,nor";
+        reg = <0>;
+        mspi-max-frequency = <50000000>;
+        read-io-mode = "MSPI_IO_MODE_QUAD_1_4_4";
+        ...
+      };
+    };
+
+compatible: "atmel,sam-qspi-controller"
+
+include: [base.yaml, pinctrl-device.yaml, mspi-controller.yaml]
+
+properties:
+  reg:
+    required: true
+
+  reg-names:
+    required: true
+    description: |
+      "qspi" for the registers, "qspi_mm" for the serial memory window.
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true
